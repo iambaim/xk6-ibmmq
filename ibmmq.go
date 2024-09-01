@@ -1,160 +1,241 @@
 package xk6ibmmq
 
 import (
-	"strconv"
-
-	"github.com/ibm-messaging/mq-golang-jms20/jms20subset"
-	"github.com/ibm-messaging/mq-golang-jms20/mqjms"
+	"encoding/hex"
+	"github.com/ibm-messaging/mq-golang/v5/ibmmq"
 	"github.com/walles/env"
 	"go.k6.io/k6/js/modules"
+	"log"
+	"strconv"
 )
 
 func init() {
 	modules.Register("k6/x/ibmmq", new(Ibmmq))
 }
 
-type Ibmmq struct{}
+type Ibmmq struct {
+	QMName string
+	cno    *ibmmq.MQCNO
+}
 
-func (*Ibmmq) NewClient() mqjms.ConnectionFactoryImpl {
+func (s *Ibmmq) NewClient() int {
+	var qMgr ibmmq.MQQueueManager
+	var err error
+	var rc int
+
 	QMName := env.MustGet("MQ_QMGR", env.String)
 	Hostname := env.MustGet("MQ_HOST", env.String)
-	PortNumber := env.MustGet("MQ_PORT", strconv.Atoi)
+	PortNumber := env.MustGet("MQ_PORT", env.String)
 	ChannelName := env.MustGet("MQ_CHANNEL", env.String)
 	UserName := env.MustGet("MQ_USERID", env.String)
 	Password := env.MustGet("MQ_PASSWORD", env.String)
 
-	cf := mqjms.ConnectionFactoryImpl{
-		QMName:      QMName,
-		Hostname:    Hostname,
-		PortNumber:  PortNumber,
-		ChannelName: ChannelName,
-		UserName:    UserName,
-		Password:    Password,
+	// Allocate the MQCNO and MQCD structures needed for the CONNX call.
+	cno := ibmmq.NewMQCNO()
+	cd := ibmmq.NewMQCD()
+
+	// Fill in required fields in the MQCD channel definition structure
+	cd.ChannelName = ChannelName
+	cd.ConnectionName = Hostname + "(" + PortNumber + ")"
+
+	// Reference the CD structure from the CNO and indicate that we definitely want to
+	// use the client connection method.
+	cno.ClientConn = cd
+	cno.Options = ibmmq.MQCNO_CLIENT_BINDING
+
+	// MQ V9.1.2 allows applications to specify their own names. This is ignored
+	// by older levels of the MQ libraries.
+	cno.ApplName = "xk6-ibmmq"
+
+	if UserName != "" {
+		csp := ibmmq.NewMQCSP()
+		csp.AuthenticationType = ibmmq.MQCSP_AUTH_USER_ID_AND_PWD
+		csp.UserId = UserName
+		csp.Password = Password
+
+		// Make the CNO refer to the CSP structure so it gets used during the connection
+		cno.SecurityParms = csp
 	}
 
-	return cf
-}
-
-func (s *Ibmmq) Send(ibmmqClient mqjms.ConnectionFactoryImpl, sendQueueName string, replyQueueName string, msgText string, sim bool) string {
-	ctx, errCtx := ibmmqClient.CreateContext()
-
-	if errCtx != nil {
-		panic("Error during CreateContext: " + errCtx.GetReason())
-	}
-
-	defer ctx.Close()
-
-	sendQueue := ctx.CreateQueue(sendQueueName)
-	replyQueue := ctx.CreateQueue(replyQueueName)
-
-	msg := ctx.CreateTextMessageWithString(msgText)
-
-	errReply := msg.SetJMSReplyTo(replyQueue)
-	if errReply != nil {
-		panic("Error setting reply: " + errReply.GetReason())
-	}
-
-	errSend := ctx.CreateProducer().Send(sendQueue, msg)
-
-	if errSend != nil {
-		panic("Error sending: " + errSend.GetReason())
-	}
-
-	msgID := msg.GetJMSMessageID()
-
-	if sim {
-		replyToMessage(ibmmqClient, sendQueueName)
-	}
-
-	return msgID
-}
-
-func (s *Ibmmq) Receive(ibmmqClient mqjms.ConnectionFactoryImpl, replyQueueName string, msgID string, msgText string) {
-	ctx, errCtx := ibmmqClient.CreateContext()
-
-	if errCtx != nil {
-		panic("Error during CreateContext: " + errCtx.GetReason())
-	}
-
-	defer ctx.Close()
-
-	replyQueue := ctx.CreateQueue(replyQueueName)
-
-	// Receive the reply message, selecting by CorrelID
-	requestConsumer, errRConn := ctx.CreateConsumerWithSelector(replyQueue, "JMSCorrelationID = '"+msgID+"'")
-
-	if requestConsumer != nil {
-		defer requestConsumer.Close()
+	// And now we can try to connect. Wait a short time before disconnecting.
+	qMgr, err = ibmmq.Connx(QMName, cno)
+	if err == nil {
+		defer qMgr.Disc()
+		s.QMName = QMName
+		s.cno = cno
+		rc = 0
 	} else {
-		panic("Unable to select message: " + errRConn.GetReason())
+		rc = int(err.(*ibmmq.MQReturn).MQCC)
+		log.Fatal("Error during Connect: " + strconv.Itoa(rc) + err.Error())
+	}
+	return rc
+}
+
+func (s *Ibmmq) Connect() ibmmq.MQQueueManager {
+	qMgr, err := ibmmq.Connx(s.QMName, s.cno)
+	if err != nil {
+		rc := int(err.(*ibmmq.MQReturn).MQCC)
+		log.Fatal("Error during Connect: " + strconv.Itoa(rc) + err.Error())
+	}
+	return qMgr
+}
+
+func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string, simulateReply bool) string {
+	var msgId string
+	var qMgr ibmmq.MQQueueManager
+
+	mqod := ibmmq.NewMQOD()
+	openOptions := ibmmq.MQOO_OUTPUT
+	mqod.ObjectType = ibmmq.MQOT_Q
+	mqod.ObjectName = sourceQueue
+
+	qMgr = s.Connect()
+	defer qMgr.Disc()
+	qObject, err := qMgr.Open(mqod, openOptions)
+	if err != nil {
+		log.Fatal("Error in opening queue: " + err.Error())
+	} else {
+		defer qObject.Close(0)
+	}
+	putmqmd := ibmmq.NewMQMD()
+	pmo := ibmmq.NewMQPMO()
+
+	pmo.Options = ibmmq.MQPMO_NO_SYNCPOINT
+	pmo.Options |= ibmmq.MQPMO_NEW_MSG_ID
+	pmo.Options |= ibmmq.MQPMO_NEW_CORREL_ID
+	pmo.Options |= ibmmq.MQPMO_FAIL_IF_QUIESCING
+
+	putmqmd.Format = ibmmq.MQFMT_STRING
+	putmqmd.ReplyToQ = replyQueue
+	buffer := []byte(sourceMessage)
+
+	// Put the message
+	err = qObject.Put(putmqmd, pmo, buffer)
+
+	if err != nil {
+		log.Fatal("Error in putting msg: " + err.Error())
+		msgId = ""
+	} else {
+		msgId = hex.EncodeToString(putmqmd.MsgId)
 	}
 
-	rcvMsg, errRvc := requestConsumer.ReceiveNoWait()
-	if rcvMsg == nil && errRvc == nil {
-		panic("Queue is empty!")
+	if simulateReply {
+		s.replyToMessage(sourceQueue)
 	}
 
-	switch msg := rcvMsg.(type) {
-	case jms20subset.TextMessage:
-		if msgText != *msg.GetText() {
-			panic("Not the reply we expect!")
+	return msgId
+}
+
+func (s *Ibmmq) Receive(replyQueue string, msgId string, replyMsg string) int {
+	var qMgr ibmmq.MQQueueManager
+	var rc int
+
+	mqod := ibmmq.NewMQOD()
+	openOptions := ibmmq.MQOO_INPUT_SHARED
+	mqod.ObjectType = ibmmq.MQOT_Q
+	mqod.ObjectName = replyQueue
+	qMgr = s.Connect()
+	defer qMgr.Disc()
+
+	qObject, err := qMgr.Open(mqod, openOptions)
+	if err != nil {
+		log.Fatal("Error in opening queue: " + err.Error())
+	} else {
+		defer qObject.Close(0)
+	}
+
+	getmqmd := ibmmq.NewMQMD()
+	gmo := ibmmq.NewMQGMO()
+
+	gmo.Options = ibmmq.MQGMO_NO_SYNCPOINT
+	gmo.Options |= ibmmq.MQGMO_WAIT
+	gmo.WaitInterval = 3 * 1000
+
+	getmqmd.CorrelId, _ = hex.DecodeString(msgId)
+	gmo.MatchOptions = ibmmq.MQMO_MATCH_CORREL_ID
+	gmo.Version = ibmmq.MQGMO_VERSION_2
+
+	buffer := make([]byte, 0, 1024)
+	buffer, _, err = qObject.GetSlice(getmqmd, gmo, buffer)
+
+	if err != nil {
+		mqret := err.(*ibmmq.MQReturn)
+		if mqret.MQRC == ibmmq.MQRC_NO_MSG_AVAILABLE {
+			rc = 0
 		}
-	default:
-		panic("Got something other than a text message: " + errRvc.GetReason())
+		log.Fatal("Error getting message:" + err.Error())
+		rc = 1
+	} else {
+		rc = 0
+		if replyMsg != "" && replyMsg != string(buffer) {
+			log.Fatal("Not the response we expect!")
+			rc = 2
+		}
 	}
+	return rc
 }
 
 /*
  * Simulate another application replying to a message.
  */
-func replyToMessage(cf mqjms.ConnectionFactoryImpl, sendQueueName string) {
-	ctx, errCtx := cf.CreateContext()
+func (s *Ibmmq) replyToMessage(sendQueueName string) {
+	var qMgr ibmmq.MQQueueManager
 
-	if errCtx != nil {
-		panic("Error during CreateContext: " + errCtx.GetReason())
+	mqod := ibmmq.NewMQOD()
+	openOptions := ibmmq.MQOO_INPUT_SHARED
+	mqod.ObjectType = ibmmq.MQOT_Q
+	mqod.ObjectName = sendQueueName
+	qMgr = s.Connect()
+	defer qMgr.Disc()
+
+	qObject, err := qMgr.Open(mqod, openOptions)
+	if err != nil {
+		log.Fatal("(SIM)Error in opening queue: " + err.Error())
 	}
 
-	defer ctx.Close()
+	getmqmd := ibmmq.NewMQMD()
+	gmo := ibmmq.NewMQGMO()
 
-	sendQueue := ctx.CreateQueue(sendQueueName)
+	gmo.Options = ibmmq.MQGMO_NO_SYNCPOINT
 
-	// Receive the sent message, selecting by CorrelID
-	requestConsumer, errRConn := ctx.CreateConsumer(sendQueue)
+	gmo.Options |= ibmmq.MQGMO_WAIT
+	gmo.WaitInterval = 3 * 1000
 
-	if requestConsumer != nil {
-		defer requestConsumer.Close()
+	buffer := make([]byte, 0, 1024)
+	buffer, _, err = qObject.GetSlice(getmqmd, gmo, buffer)
+	qObject.Close(0)
+	if err != nil {
+		mqret := err.(*ibmmq.MQReturn)
+		if mqret.MQRC != ibmmq.MQRC_NO_MSG_AVAILABLE {
+			log.Fatal("(SIM)Error getting message:" + err.Error())
+		}
 	} else {
-		panic("Error during reading msg: " + errRConn.GetReason())
-	}
+		mqod = ibmmq.NewMQOD()
+		openOptions = ibmmq.MQOO_OUTPUT
+		mqod.ObjectType = ibmmq.MQOT_Q
+		mqod.ObjectName = getmqmd.ReplyToQ
 
-	rcvMsg, errRvc := requestConsumer.ReceiveNoWait()
+		qObject, err = qMgr.Open(mqod, openOptions)
+		if err != nil {
+			log.Fatal("(SIM)Error in opening queue: " + err.Error())
+		} else {
+			defer qObject.Close(0)
+		}
 
-	if rcvMsg == nil && errRvc == nil {
-		panic("Queue is empty!")
-	}
+		putmqmd := ibmmq.NewMQMD()
+		pmo := ibmmq.NewMQPMO()
 
-	reqMsgID := rcvMsg.GetJMSMessageID()
-	replyDest := rcvMsg.GetJMSReplyTo()
+		pmo.Options = ibmmq.MQPMO_NO_SYNCPOINT
+		pmo.Options |= ibmmq.MQPMO_NEW_MSG_ID
 
-	switch rcvMsg.(type) {
-	case jms20subset.TextMessage:
-	default:
-		panic("Got something other than a text message: " + errRvc.GetReason())
-	}
+		putmqmd.Format = ibmmq.MQFMT_STRING
+		putmqmd.CorrelId = getmqmd.MsgId
 
-	// Reply to the sent message, set CorrelID
-	replyMsgBody := "ReplyMsg"
-	replyMsg := ctx.CreateTextMessageWithString(replyMsgBody)
-	errJMSCorr := replyMsg.SetJMSCorrelationID(reqMsgID)
+		// Put the message
+		err = qObject.Put(putmqmd, pmo, []byte("Reply Message"))
 
-	if errJMSCorr != nil {
-		panic("Error setting correlation: " + errJMSCorr.GetReason())
-	}
-
-	// Send the reply message back to the reply queue
-	errSend := ctx.CreateProducer().Send(replyDest, replyMsg)
-
-	if errSend != nil {
-		panic("Error sending: " + errSend.GetReason())
+		if err != nil {
+			log.Fatal("(SIM)Error in putting msg: " + err.Error())
+		}
 	}
 }

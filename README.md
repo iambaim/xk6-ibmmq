@@ -42,6 +42,7 @@ Then, install [xk6](https://github.com/grafana/xk6) and build your custom k6 bin
 2. Build the binary:
 
   ```shell
+  $ export CGO_ENABLED=1
   $ xk6 build --with github.com/iambaim/xk6-ibmmq@latest
   ```
 
@@ -59,8 +60,8 @@ To configure the MQ connection factory, you need to set these environment variab
 
 ## Run local test
 
-Use the provided ´./local-test.sh´. This is a self-contained test scriptthat will spin up a local MQ container using docker,
-build the extension, and run an example k6 test with IBM MQ in ´./example/localtest.js´ file.
+Use the provided `./local-test.sh`. This is a self-contained test scriptthat will spin up a local MQ container using docker,
+build the extension, and run an example k6 test with IBM MQ in `./example/localtest.js` file.
 
 ## Example test
 
