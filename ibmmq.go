@@ -18,93 +18,131 @@ type Ibmmq struct {
 	cno    *ibmmq.MQCNO
 }
 
+/*
+ * Initialize Queue Manager connection.
+ */
 func (s *Ibmmq) NewClient() int {
-	var qMgr ibmmq.MQQueueManager
-	var err error
 	var rc int
 
+	// Get all the environment variables
 	QMName := env.MustGet("MQ_QMGR", env.String)
 	Hostname := env.MustGet("MQ_HOST", env.String)
 	PortNumber := env.MustGet("MQ_PORT", env.String)
 	ChannelName := env.MustGet("MQ_CHANNEL", env.String)
 	UserName := env.MustGet("MQ_USERID", env.String)
 	Password := env.MustGet("MQ_PASSWORD", env.String)
+	SSLKeystore := env.GetOr("MQ_TLS_KEYSTORE", env.String, "")
 
-	// Allocate the MQCNO and MQCD structures needed for the CONNX call.
+	// Allocate new MQCNO and MQCD structures
 	cno := ibmmq.NewMQCNO()
 	cd := ibmmq.NewMQCD()
 
-	// Fill in required fields in the MQCD channel definition structure
+	// Setup channel and connection name
 	cd.ChannelName = ChannelName
 	cd.ConnectionName = Hostname + "(" + PortNumber + ")"
 
-	// Reference the CD structure from the CNO and indicate that we definitely want to
-	// use the client connection method.
+	// Set the connection paramters
 	cno.ClientConn = cd
 	cno.Options = ibmmq.MQCNO_CLIENT_BINDING
+	cno.Options |= ibmmq.MQCNO_RECONNECT
+	cno.Options |= ibmmq.MQCNO_HANDLE_SHARE_NO_BLOCK
+	cno.Options |= ibmmq.MQCNO_ALL_CONVS_SHARE
 
-	// MQ V9.1.2 allows applications to specify their own names. This is ignored
-	// by older levels of the MQ libraries.
+	// Specify own name for the application
 	cno.ApplName = "xk6-ibmmq"
 
+	// If SSL is used set the necessary MQSCO
+	if SSLKeystore != "" {
+		sco := ibmmq.NewMQSCO()
+		cd.SSLCipherSpec = "ANY_TLS12_OR_HIGHER"
+		sco.KeyRepository = SSLKeystore
+		cno.SSLConfig = sco
+	}
+
+	// If username is specified set MQCSP and filled the user and password variables
 	if UserName != "" {
 		csp := ibmmq.NewMQCSP()
 		csp.AuthenticationType = ibmmq.MQCSP_AUTH_USER_ID_AND_PWD
 		csp.UserId = UserName
 		csp.Password = Password
 
-		// Make the CNO refer to the CSP structure so it gets used during the connection
+		// Update the connection to use the auth info
 		cno.SecurityParms = csp
 	}
 
-	// And now we can try to connect. Wait a short time before disconnecting.
-	qMgr, err = ibmmq.Connx(QMName, cno)
+	// And now we can try to connect for the first time and defer the disconnection
+	qMgr, err := ibmmq.Connx(QMName, cno)
 	if err == nil {
+		rc = 0
 		defer qMgr.Disc()
+		// Update the state information
 		s.QMName = QMName
 		s.cno = cno
-		rc = 0
 	} else {
 		rc = int(err.(*ibmmq.MQReturn).MQCC)
-		log.Fatal("Error during Connect: " + strconv.Itoa(rc) + err.Error())
+		log.Fatal("Error in making the initial connection: " + strconv.Itoa(rc) + err.Error())
 	}
 	return rc
 }
 
+/*
+ * Connect to Queue Manager.
+ */
 func (s *Ibmmq) Connect() ibmmq.MQQueueManager {
+	// Connect to the Queue Manager
 	qMgr, err := ibmmq.Connx(s.QMName, s.cno)
 	if err != nil {
-		rc := int(err.(*ibmmq.MQReturn).MQCC)
-		log.Fatal("Error during Connect: " + strconv.Itoa(rc) + err.Error())
+		if err.(*ibmmq.MQReturn).MQRC == ibmmq.MQRC_SSL_INITIALIZATION_ERROR {
+			for {
+				qMgr, err = ibmmq.Connx(s.QMName, s.cno)
+				if err == nil {
+					break
+				}
+			}
+		} else {
+			rc := int(err.(*ibmmq.MQReturn).MQCC)
+			log.Fatal("Error during Connect: " + strconv.Itoa(rc) + err.Error())
+		}
 	}
 	return qMgr
 }
 
+/*
+ * Send a message into a sourceQueue, set reply queue == replyQueue, and return the Message ID.
+ */
 func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string, simulateReply bool) string {
 	var msgId string
 	var qMgr ibmmq.MQQueueManager
 
+	// Set queue open options
 	mqod := ibmmq.NewMQOD()
 	openOptions := ibmmq.MQOO_OUTPUT
 	mqod.ObjectType = ibmmq.MQOT_Q
 	mqod.ObjectName = sourceQueue
 
+	// Connect to Queue Manager
 	qMgr = s.Connect()
 	defer qMgr.Disc()
+
+	// Open queue
 	qObject, err := qMgr.Open(mqod, openOptions)
 	if err != nil {
 		log.Fatal("Error in opening queue: " + err.Error())
 	} else {
 		defer qObject.Close(0)
 	}
+
+	// Set new structures
 	putmqmd := ibmmq.NewMQMD()
 	pmo := ibmmq.NewMQPMO()
 
+	// Set put options
 	pmo.Options = ibmmq.MQPMO_NO_SYNCPOINT
 	pmo.Options |= ibmmq.MQPMO_NEW_MSG_ID
 	pmo.Options |= ibmmq.MQPMO_NEW_CORREL_ID
 	pmo.Options |= ibmmq.MQPMO_FAIL_IF_QUIESCING
 
+	// Set message content and reply queue
 	putmqmd.Format = ibmmq.MQFMT_STRING
 	putmqmd.ReplyToQ = replyQueue
 	buffer := []byte(sourceMessage)
@@ -112,6 +150,7 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string
 	// Put the message
 	err = qObject.Put(putmqmd, pmo, buffer)
 
+	// Handle errors
 	if err != nil {
 		log.Fatal("Error in putting msg: " + err.Error())
 		msgId = ""
@@ -119,6 +158,7 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string
 		msgId = hex.EncodeToString(putmqmd.MsgId)
 	}
 
+	// Check if we need to simulate the reply
 	if simulateReply {
 		s.replyToMessage(sourceQueue)
 	}
@@ -126,17 +166,24 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string
 	return msgId
 }
 
+/*
+ * Receive a message, matching Correlation ID with the supplied msgId.
+ */
 func (s *Ibmmq) Receive(replyQueue string, msgId string, replyMsg string) int {
 	var qMgr ibmmq.MQQueueManager
 	var rc int
 
+	// Prepare to open queue
 	mqod := ibmmq.NewMQOD()
 	openOptions := ibmmq.MQOO_INPUT_SHARED
 	mqod.ObjectType = ibmmq.MQOT_Q
 	mqod.ObjectName = replyQueue
+
+	// Call connect
 	qMgr = s.Connect()
 	defer qMgr.Disc()
 
+	// Open queue
 	qObject, err := qMgr.Open(mqod, openOptions)
 	if err != nil {
 		log.Fatal("Error in opening queue: " + err.Error())
@@ -144,20 +191,25 @@ func (s *Ibmmq) Receive(replyQueue string, msgId string, replyMsg string) int {
 		defer qObject.Close(0)
 	}
 
+	// Prepare new structures
 	getmqmd := ibmmq.NewMQMD()
 	gmo := ibmmq.NewMQGMO()
 
+	// Wait for a while for the message to arrive
 	gmo.Options = ibmmq.MQGMO_NO_SYNCPOINT
 	gmo.Options |= ibmmq.MQGMO_WAIT
 	gmo.WaitInterval = 3 * 1000
 
+	// Match the correlation id
 	getmqmd.CorrelId, _ = hex.DecodeString(msgId)
 	gmo.MatchOptions = ibmmq.MQMO_MATCH_CORREL_ID
 	gmo.Version = ibmmq.MQGMO_VERSION_2
 
+	// Get message
 	buffer := make([]byte, 0, 1024)
 	buffer, _, err = qObject.GetSlice(getmqmd, gmo, buffer)
 
+	// Handle errors
 	if err != nil {
 		mqret := err.(*ibmmq.MQReturn)
 		if mqret.MQRC == ibmmq.MQRC_NO_MSG_AVAILABLE {
@@ -231,7 +283,6 @@ func (s *Ibmmq) replyToMessage(sendQueueName string) {
 		putmqmd.Format = ibmmq.MQFMT_STRING
 		putmqmd.CorrelId = getmqmd.MsgId
 
-		// Put the message
 		err = qObject.Put(putmqmd, pmo, []byte("Reply Message"))
 
 		if err != nil {

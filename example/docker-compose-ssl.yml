@@ -1,0 +1,14 @@
+services:
+  localmqtest:
+    container_name: ibmmq_main
+    image: icr.io/ibm-messaging/mq
+    ports:
+      - "1414:1414"
+      - "9443:9443"
+    environment:
+      - LICENSE=accept
+      - MQ_QMGR_NAME=QM1
+      - MQ_ADMIN_PASSWORD=password
+      - MQ_APP_PASSWORD=password
+    volumes:
+    - ../pki:/etc/mqm/pki

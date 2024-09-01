@@ -1,6 +1,6 @@
 import ibmmq from 'k6/x/ibmmq';
 
-const client = ibmmq.newClient()
+const rc = ibmmq.newClient()
 
 export default function () {
     const sourceQueue = "DEV.QUEUE.1"
