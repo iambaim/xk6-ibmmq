@@ -60,8 +60,10 @@ To configure the MQ connection factory, you need to set these environment variab
 
 ## Run local test
 
-Use the provided `./local-test.sh`. This is a self-contained test scriptthat will spin up a local MQ container using docker,
-build the extension, and run an example k6 test with IBM MQ in `./example/localtest.js` file.
+Use the provided `./local-test.sh` and `./local-test-ssl.sh` (for SSL). 
+These files are the self-contained test script that will spin up a local MQ
+container using docker, build the extension, and run an example k6 test with
+IBM MQ in `./example/localtest.js` file.
 
 ## Example test
 
