@@ -46,8 +46,13 @@ export MQ_PORT=1414
 export MQ_USERID="app"
 export MQ_PASSWORD="password"
 
-export MQ_TLS_KEYSTORE="./pki/tls.crt"
+# For Linux/Windows only,
+export MQ_TLS_KEYSTORE="./pki/myqmgr"
+# for MacOS use the below
+#export MQ_TLS_KEYSTORE="./pki/tls.crt"
 
-./k6 run --vus 1 --duration 5s example/localtest.js
+# Also for MacOS we need to keep the VU number 1,
+# perhaps a bug in the MQ client for MacOS?
+./k6 run --vus 2 --duration 5s example/localtest.js
 
 docker compose -f example/docker-compose-ssl.yml down
