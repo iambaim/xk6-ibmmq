@@ -31,7 +31,7 @@ openssl pkcs12 -in ./pki/myqmgr2.p12 -nodes -nocerts -passin pass:password | ope
 cp ./pki/tls.* ./pki/keys/ibmwebspheremqqm1
 
 # Run dev MQ container and wait until MQ is ready
-docker-compose -f example/docker-compose-ssl.yml up -d localmqtest
+docker compose -f example/docker-compose-ssl.yml up -d localmqtest
 while curl --output /dev/null --silent --head --fail localhost:1414 ; [ $? -ne 52 ];do
   printf '.'
   sleep 1
@@ -50,4 +50,4 @@ export MQ_TLS_KEYSTORE="./pki/tls.crt"
 
 ./k6 run --vus 1 --duration 5s example/localtest.js
 
-docker-compose -f example/docker-compose-ssl.yml down
+docker compose -f example/docker-compose-ssl.yml down
