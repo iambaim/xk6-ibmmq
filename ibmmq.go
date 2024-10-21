@@ -110,9 +110,10 @@ func (s *Ibmmq) Connect() ibmmq.MQQueueManager {
 /*
  * Send a message into a sourceQueue, set reply queue == replyQueue, and return the Message ID.
  */
-func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string, simulateReply bool) string {
+func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string, extraProperties map[string]any, simulateReply bool) string {
 	var msgId string
 	var qMgr ibmmq.MQQueueManager
+	var putMsgHandle ibmmq.MQMessageHandle
 
 	// Set queue open options
 	mqod := ibmmq.NewMQOD()
@@ -146,6 +147,29 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string
 	putmqmd.Format = ibmmq.MQFMT_STRING
 	putmqmd.ReplyToQ = replyQueue
 	buffer := []byte(sourceMessage)
+
+	// Set extra properties
+	if len(extraProperties) > 0 {
+		cmho := ibmmq.NewMQCMHO()
+		putMsgHandle, err = qMgr.CrtMH(cmho)
+		if err != nil {
+			log.Fatal("Error in setting putMsgHandle: " + err.Error())
+		} else {
+			defer dltMh(putMsgHandle)
+		}
+
+		smpo := ibmmq.NewMQSMPO()
+		pd := ibmmq.NewMQPD()
+
+		for k, v := range extraProperties {
+			err = putMsgHandle.SetMP(smpo, k, pd, v)
+			if err != nil {
+				log.Fatal("Error in setting prop " + k + " : " + err.Error())
+			}
+		}
+
+		pmo.OriginalMsgHandle = putMsgHandle
+	}
 
 	// Put the message
 	err = qObject.Put(putmqmd, pmo, buffer)
@@ -289,4 +313,14 @@ func (s *Ibmmq) replyToMessage(sendQueueName string) {
 			log.Fatal("(SIM)Error in putting msg: " + err.Error())
 		}
 	}
+}
+
+// Clean up message handle
+func dltMh(mh ibmmq.MQMessageHandle) error {
+	dmho := ibmmq.NewMQDMHO()
+	err := mh.DltMH(dmho)
+	if err != nil {
+		log.Fatal("Unable to close a msg handle!")
+	}
+	return err
 }
