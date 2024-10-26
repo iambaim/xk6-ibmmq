@@ -57,7 +57,7 @@ To configure the MQ connection factory, you need to set these environment variab
 4. `MQ_PORT`. Port number to connect to (e.g., 1414).
 5. `MQ_USERID`. User ID to use.
 6. `MQ_PASSWORD`. User password to use.
-7. `MQ_TLS_KEYSTORE`. **(NEW)** TLS keystore to use. Usage example: [local-test-ssl.sh][./local-test-ssl.sh].
+7. `MQ_TLS_KEYSTORE`. **(NEW)** TLS keystore to use. Usage example: [local-test-ssl.sh](./local-test-ssl.sh).
 
 ## Run local test
 
