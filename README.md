@@ -57,6 +57,7 @@ To configure the MQ connection factory, you need to set these environment variab
 4. `MQ_PORT`. Port number to connect to (e.g., 1414).
 5. `MQ_USERID`. User ID to use.
 6. `MQ_PASSWORD`. User password to use.
+7. `MQ_TLS_KEYSTORE`. **(NEW)** TLS keystore to use. Usage example: (local-test-ssl.sh)[./local-test-ssl.sh].
 
 ## Run local test
 
@@ -88,9 +89,15 @@ export default function () {
     const replyQueue = "DEV.QUEUE.2"
     const sourceMessage = "My Message"
     const replyMessage = "ReplyMsg"
+    // Below is the extra properties that we want to set
+    // Leave it as null or an empty map if no extra properties are needed
+    const extraProperties = new Map([
+        ["apiVersion", 2],
+        ["extraText", "extra"]
+    ])
     // The below parameter enable/disable a simulated application that will consume
     // the message in the source queue and put a reply message in the reply queue
-    // along with setting the correlation id using the source message ID
+    // and the reply message correlation ID == source message ID
     const simulateReply = true
 
     const msgID = ibmmq.send(client, sourceQueue, replyQueue, sourceMessage, simulateReply)

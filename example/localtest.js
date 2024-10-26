@@ -7,7 +7,8 @@ export default function () {
     const replyQueue = "DEV.QUEUE.2"
     const sourceMessage = "Sent Message"
     const replyMessage = "Reply Message"
-    // Leave below as null or empty map if no extra properties is needed
+    // Below is the extra properties that we want to set
+    // Leave it as null or an empty map if no extra properties are needed
     const extraProperties = new Map([
         ["apiVersion", 2],
         ["extraText", "extra"]
