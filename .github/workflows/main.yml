@@ -21,13 +21,14 @@ jobs:
       - name: Cache MQ Client
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}/setup-mqclient
+          path: ${{ github.workspace }}/distr
           key: mqclient-${{ runner.os }}-${{ matrix.mq-client-version }}
 
       - name: Install MQ Client
         uses: SeyfSV/setup-mqclient@v0.3.1
         with:
           mq-client-version: ${{ matrix.mq-client-version }}
+          download-path: ${{ github.workspace }}/distr
       
       - name: Setup Go environment
         uses: actions/setup-go@v5.0.1
