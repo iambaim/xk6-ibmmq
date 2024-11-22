@@ -193,7 +193,7 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string
 /*
  * Receive a message, matching Correlation ID with the supplied msgId.
  */
-func (s *Ibmmq) Receive(replyQueue string, msgId string, replyMsg string) int {
+func (s *Ibmmq) Receive(replyQueue string, msgId string, waitInterval int32) (int, string) {
 	var qMgr ibmmq.MQQueueManager
 	var rc int
 
@@ -222,7 +222,7 @@ func (s *Ibmmq) Receive(replyQueue string, msgId string, replyMsg string) int {
 	// Wait for a while for the message to arrive
 	gmo.Options = ibmmq.MQGMO_NO_SYNCPOINT
 	gmo.Options |= ibmmq.MQGMO_WAIT
-	gmo.WaitInterval = 3 * 1000
+	gmo.WaitInterval = waitInterval
 
 	// Match the correlation id
 	getmqmd.CorrelId, _ = hex.DecodeString(msgId)
@@ -243,12 +243,8 @@ func (s *Ibmmq) Receive(replyQueue string, msgId string, replyMsg string) int {
 		rc = 1
 	} else {
 		rc = 0
-		if replyMsg != "" && replyMsg != string(buffer) {
-			log.Fatal("Not the response we expect!")
-			rc = 2
-		}
 	}
-	return rc
+	return rc, string(buffer)
 }
 
 /*
