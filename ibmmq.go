@@ -140,7 +140,6 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string
 	// Set put options
 	pmo.Options = ibmmq.MQPMO_NO_SYNCPOINT
 	pmo.Options |= ibmmq.MQPMO_NEW_MSG_ID
-	pmo.Options |= ibmmq.MQPMO_NEW_CORREL_ID
 	pmo.Options |= ibmmq.MQPMO_FAIL_IF_QUIESCING
 
 	// Set message content and reply queue
