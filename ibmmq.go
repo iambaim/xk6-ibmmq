@@ -229,7 +229,7 @@ func (s *Ibmmq) Receive(replyQueue string, msgId string, waitInterval int32) (in
 	gmo.Version = ibmmq.MQGMO_VERSION_2
 
 	// Get message
-	buffer := make([]byte, 0, 1024)
+	buffer := make([]byte, 0, 1048576)
 	buffer, _, err = qObject.GetSlice(getmqmd, gmo, buffer)
 
 	// Handle errors
