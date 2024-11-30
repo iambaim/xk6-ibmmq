@@ -15,10 +15,10 @@ RUN apt-get update && apt-get install -y \
 
 # Install IBM MQ and strip out the unnecessary files with genmqpkg
 RUN wget -q https://public.dhe.ibm.com/ibmdl/export/pub/software/websphere/messaging/mqdev/redist/${MQC_VERSION}-IBM-MQC-Redist-LinuxX64.tar.gz \
-    && mkdir mqtmp \
-    && tar -xzf ${MQC_VERSION}-IBM-MQC-Redist-LinuxX64.tar.gz -C mqtmp \
     && mkdir /opt/mqm \
-    && mqtmp/bin/genmqpkg.sh -b /opt/mqm
+    && tar -xzf ${MQC_VERSION}-IBM-MQC-Redist-LinuxX64.tar.gz -C /opt/mqm \
+    && mkdir /opt/mqm-s \
+    && /opt/mqm/bin/genmqpkg.sh -b /opt/mqm-s
 
 WORKDIR /workspace
 
@@ -30,5 +30,5 @@ FROM debian:bookworm-slim
 
 ENV LD_LIBRARY_PATH="/opt/mqm/lib64:/usr/lib64"
 
-COPY --from=builder /opt/mqm /opt/mqm
+COPY --from=builder /opt/mqm-s /opt/mqm
 COPY --from=builder /k6 /usr/bin/k6
