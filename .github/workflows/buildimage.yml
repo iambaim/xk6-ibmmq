@@ -24,9 +24,9 @@ jobs:
       - name: Set variables
         run: |
           if [[ "${{github.event_name}}" == "pull_request" ]]; then
-            echo "DO_PUSH=FALSE" >> $GITHUB_STATE
+            echo "DO_PUSH=FALSE" >> "$GITHUB_ENV"
           else
-            echo "DO_PUSH=TRUE" >> $GITHUB_STATE
+            echo "DO_PUSH=TRUE" >> "$GITHUB_ENV"
           fi
       - name: Use environment variable
         run: |
