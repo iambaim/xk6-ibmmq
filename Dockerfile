@@ -15,8 +15,9 @@ RUN apt-get update && apt-get install -y \
 
 # Install IBM MQ and strip out the unnecessary files with genmqpkg
 RUN wget -q https://public.dhe.ibm.com/ibmdl/export/pub/software/websphere/messaging/mqdev/redist/${MQC_VERSION}-IBM-MQC-Redist-LinuxX64.tar.gz \
-    && mkdir /opt/mqm \
+    && mkdir mqtmp \
     && tar -xzf ${MQC_VERSION}-IBM-MQC-Redist-LinuxX64.tar.gz -C mqtmp \
+    && mkdir /opt/mqm \
     && mqtmp/bin/genmqpkg.sh -b /opt/mqm
 
 WORKDIR /workspace
