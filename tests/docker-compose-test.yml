@@ -21,6 +21,7 @@ services:
       - MQ_USERID=app
       - MQ_PASSWORD=password
     volumes:
+      -  ./run.sh:/tmp/run.sh
       - ../example/localtest.js:/tmp/localtest.js
     depends_on:
       qm:

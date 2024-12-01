@@ -20,4 +20,4 @@ jobs:
       with:
         file: tests/docker-compose-test.yml
         service: k6
-        command: /bin/bash -c "/usr/bin/k6 run --vus 2 --duration 5s /tmp/localtest.js"
+        command: /tmp/run.sh
