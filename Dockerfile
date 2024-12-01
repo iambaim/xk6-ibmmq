@@ -26,7 +26,7 @@ WORKDIR /workspace
 RUN go install go.k6.io/xk6/cmd/xk6@latest \
     && xk6 build --with github.com/iambaim/xk6-ibmmq --output /k6
 
-FROM debian:bookworm-slim
+FROM gcr.io/distroless/base-debian12:latest
 
 ENV LD_LIBRARY_PATH="/opt/mqm/lib64:/usr/lib64"
 
