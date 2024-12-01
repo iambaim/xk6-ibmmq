@@ -1,6 +1,6 @@
 FROM golang:1.22.1 AS builder
 
-ENV MQC_VERSION="9.4.1.0" \
+ENV MQC_VERSION="9.4.0.6" \
     CGO_ENABLED=1 \
     CGO_CFLAGS="-I/opt/mqm/inc" \
     CGO_LDFLAGS="-L/opt/mqm/lib64 -Wl,-rpath=/opt/mqm/lib64" \
