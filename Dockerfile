@@ -1,6 +1,6 @@
-FROM golang:1.22.1 as builder
+FROM golang:1.22.1 AS builder
 
-ENV MQC_VERSION="9.4.1.0" \
+ENV MQC_VERSION="9.4.0.6" \
     CGO_ENABLED=1 \
     CGO_CFLAGS="-I/opt/mqm/inc" \
     CGO_LDFLAGS="-L/opt/mqm/lib64 -Wl,-rpath=/opt/mqm/lib64" \
@@ -26,9 +26,11 @@ WORKDIR /workspace
 RUN go install go.k6.io/xk6/cmd/xk6@latest \
     && xk6 build --with github.com/iambaim/xk6-ibmmq --output /k6
 
-FROM debian:bookworm-slim
+FROM gcr.io/distroless/base-debian12:latest
 
 ENV LD_LIBRARY_PATH="/opt/mqm/lib64:/usr/lib64"
 
 COPY --from=builder /opt/mqm-s /opt/mqm
 COPY --from=builder /k6 /usr/bin/k6
+
+ENTRYPOINT ["/usr/bin/k6"]

@@ -1,0 +1,28 @@
+services:
+  qm:
+    image: icr.io/ibm-messaging/mq:9.4.1.0-r1
+    ports:
+      - "1414:1414"
+    environment:
+      - LICENSE=accept
+      - MQ_QMGR_NAME=QM1
+      - MQ_ADMIN_PASSWORD=password
+      - MQ_APP_PASSWORD=password
+    healthcheck:
+      test: ["CMD-SHELL", "chkmqready && chkmqhealthy"]
+  k6:
+    build:
+      context: ../
+    environment:
+      - MQ_QMGR=QM1
+      - MQ_CHANNEL=DEV.APP.SVRCONN
+      - MQ_HOST=qm
+      - MQ_PORT=1414
+      - MQ_USERID=app
+      - MQ_PASSWORD=password
+    volumes:
+      -  ./run.sh:/tmp/run.sh
+      - ../example/localtest.js:/tmp/localtest.js
+    depends_on:
+      qm:
+        condition: service_healthy
