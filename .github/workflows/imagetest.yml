@@ -1,0 +1,23 @@
+name: Image tests
+
+on:
+  pull_request:
+    branches:
+    - main
+  push:
+    branches:
+    - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Tests
+      uses: cloudposse/github-action-docker-compose-test-run@main
+      with:
+        file: tests/docker-compose-ssl.yml
+        service: k6
+        command: k6
