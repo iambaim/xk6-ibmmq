@@ -32,3 +32,5 @@ ENV LD_LIBRARY_PATH="/opt/mqm/lib64:/usr/lib64"
 
 COPY --from=builder /opt/mqm-s /opt/mqm
 COPY --from=builder /k6 /usr/bin/k6
+
+ENTRYPOINT ["/usr/bin/k6"]
