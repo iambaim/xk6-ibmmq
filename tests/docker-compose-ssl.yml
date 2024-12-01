@@ -1,6 +1,6 @@
 services:
   init-pki:
-    image: icr.io/ibm-messaging/mq
+    image: icr.io/ibm-messaging/mq:9.4.1.0-r1
     user: root
     environment:
       - LICENSE=accept
@@ -18,7 +18,7 @@ services:
     volumes:
       - pki:/etc/mqm/pki:rw
   qm:
-    image: icr.io/ibm-messaging/mq
+    image: icr.io/ibm-messaging/mq:9.4.1.0-r1
     ports:
       - "1414:1414"
     environment:
@@ -44,6 +44,7 @@ services:
       - MQ_TLS_KEYSTORE=/etc/mqm/pki/myqmgr
     volumes:
       - pki:/etc/mqm/pki
+      - ../example/localtest.js:/tmp/localtest.js
     depends_on:
       qm:
         condition: service_started
