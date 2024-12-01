@@ -15,10 +15,20 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Tests
-      uses: cloudposse/github-action-docker-compose-test-run@main
+    - uses: KengoTODA/actions-setup-docker-compose@main
       with:
-        file: tests/docker-compose-test.yml
-        service: k6
-        entrypoint: /usr/bin/k6
-        command: run --vus 2 --duration 5s /tmp/localtest.js
+        version: 2.31.0
+
+    - name: Start test
+      shell: bash
+      run: |
+        cd tests
+        docker compose -f docker-compose-test.yml pull --include-deps
+        docker compose -f docker-compose-test.yml run --entrypoint /usr/bin/k6 k6 run --vus 2 --duration 5s /tmp/localtest.js
+
+    - name: Cleanup
+      if: always()
+      shell: bash
+      run: |
+        cd tests
+        docker compose -f docker-compose-test.yml down
