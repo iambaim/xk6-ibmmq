@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         environment: ['ubuntu-latest']
-        mq-client-version: [9.3.5.1]
+        mq-client-version: [9.4.1.0]
     runs-on: ${{ matrix.environment }}
     steps:
       - uses: actions/checkout@v4
