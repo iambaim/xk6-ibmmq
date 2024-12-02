@@ -23,7 +23,7 @@ rm -fr ./pki
 mkdir -p ./pki/keys/ibmwebspheremqqm1
 
 $MQ_INSTALLATION_PATH/bin/runmqakm -keydb -create -db ./pki/myqmgr.kdb -type cms -stash -pw password
-$MQ_INSTALLATION_PATH/bin/runmqakm -cert -create -db ./pki/myqmgr.kdb -stashed -label ibmwebspheremqqm1 -dn "CN=localhost,O=myOrganisation,OU=myDepartment,L=myLocation,C=NO" -sig_alg SHA384WithECDSA
+$MQ_INSTALLATION_PATH/bin/runmqakm -cert -create -db ./pki/myqmgr.kdb -stashed -label ibmwebspheremqqm1 -dn "CN=localhost,O=myOrganisation,OU=myDepartment,L=myLocation,C=NO" -sig_alg SHA256WithECDSA
 $MQ_INSTALLATION_PATH/bin/runmqakm -cert -extract -db ./pki/myqmgr.kdb -stashed -label ibmwebspheremqqm1 -target ./pki/tls.crt -format ascii
 $MQ_INSTALLATION_PATH/bin/runmqakm -cert -export -db ./pki/myqmgr.kdb -stashed -label ibmwebspheremqqm1 -type cms -target ./pki/myqmgr2.p12 -target_stashed -target_type pkcs12
 openssl pkcs12 -in ./pki/myqmgr2.p12 -nodes -nocerts -passin pass:password | openssl pkcs8 -nocrypt -out ./pki/tls.key 
