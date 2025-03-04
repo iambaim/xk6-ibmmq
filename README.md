@@ -36,19 +36,19 @@ Then, install [xk6](https://github.com/grafana/xk6) and build your custom k6 bin
 1. Install `xk6`:
 
   ```shell
-  $ go install go.k6.io/xk6/cmd/xk6@latest
+  go install go.k6.io/xk6/cmd/xk6@latest
   ```
 
 2. Build the binary:
 
   ```shell
-  $ export CGO_ENABLED=1
-  $ xk6 build --with github.com/iambaim/xk6-ibmmq@latest
+  export CGO_ENABLED=1
+  xk6 build --with github.com/iambaim/xk6-ibmmq=.
   ```
 
 ## IBM MQ settings
 
-This plugin uses the IBM MQ JMS 2.0 in Golang interface (https://github.com/ibm-messaging/mq-golang-jms20).
+This plugin uses the IBM MQ Golang package (https://github.com/ibm-messaging/mq-golang).
 To configure the MQ connection factory, you need to set these environment variables:
 
 1. `MQ_QMGR`. Queue manager name (e.g., "QM1").
