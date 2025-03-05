@@ -4,8 +4,6 @@ set -euo pipefail
 export MQ_INSTALLATION_PATH=/opt/mqm
 
 # Build
-export CGO_ENABLED=1
-
 # For github actions
 if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
   export MQ_INSTALLATION_PATH=$HOME/IBM/MQ/data
@@ -15,7 +13,7 @@ if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
 fi
 
 go install go.k6.io/xk6/cmd/xk6@latest
-xk6 build \
+XK6_RACE_DETECTOR=1 GCO_ENABLED=1 xk6 build \
     --with github.com/iambaim/xk6-ibmmq=.
 
 # Create ssl key
