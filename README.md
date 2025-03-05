@@ -43,6 +43,7 @@ Then, install [xk6](https://github.com/grafana/xk6) and build your custom k6 bin
 
   ```shell
   export CGO_ENABLED=1
+  export XK6_RACE_DETECTOR=1
   xk6 build --with github.com/iambaim/xk6-ibmmq=.
   ```
 
