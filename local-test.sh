@@ -2,7 +2,6 @@
 set -euo pipefail
 
 # Build
-export CGO_ENABLED=1
 
 # For github actions
 if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
@@ -13,7 +12,7 @@ if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
 fi
 
 go install go.k6.io/xk6/cmd/xk6@latest
-xk6 build \
+XK6_RACE_DETECTOR=1 GCO_ENABLED=1 xk6 build \
     --with github.com/iambaim/xk6-ibmmq=.
 
 # Run dev MQ container and wait until MQ is ready

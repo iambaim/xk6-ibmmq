@@ -1,7 +1,8 @@
-FROM golang:1.22.1 AS builder
+FROM golang:1.22.2 AS builder
 
-ENV MQC_VERSION="9.4.1.0" \
+ENV MQC_VERSION="9.4.2.0" \
     CGO_ENABLED=1 \
+    XK6_RACE_DETECTOR=1 \
     CGO_CFLAGS="-I/opt/mqm/inc" \
     CGO_LDFLAGS="-L/opt/mqm/lib64 -Wl,-rpath=/opt/mqm/lib64" \
     genmqpkg_inctls=1
