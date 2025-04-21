@@ -1,6 +1,6 @@
 module github.com/iambaim/xk6-ibmmq
 
-go 1.22.1
+go 1.24.1
 toolchain go1.24.1
 
 require (
