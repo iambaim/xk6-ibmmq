@@ -1,7 +1,6 @@
 module github.com/iambaim/xk6-ibmmq
 
-go 1.24.1
-toolchain go1.24.1
+go 1.24.2
 
 require (
 	github.com/ibm-messaging/mq-golang/v5 v5.6.2
