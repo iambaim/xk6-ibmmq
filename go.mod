@@ -3,7 +3,7 @@ module github.com/iambaim/xk6-ibmmq
 go 1.24.2
 
 require (
-	github.com/ibm-messaging/mq-golang/v5 v5.6.3
+	github.com/ibm-messaging/mq-golang/v5 v5.6.4
 	github.com/walles/env v0.0.4
 	go.k6.io/k6 v1.0.0
 )
