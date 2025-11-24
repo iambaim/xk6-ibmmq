@@ -1,6 +1,6 @@
 FROM golang:1.24.2 AS builder
 
-ENV MQC_VERSION="9.4.2.0" \
+ENV MQC_VERSION="9.4.4.0" \
     CGO_ENABLED=1 \
     XK6_RACE_DETECTOR=1 \
     CGO_CFLAGS="-I/opt/mqm/inc" \
