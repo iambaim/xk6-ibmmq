@@ -110,7 +110,7 @@ func (s *Ibmmq) Connect() ibmmq.MQQueueManager {
 /*
  * Send a message into a sourceQueue, set reply queue == replyQueue, and return the Message ID.
  */
-func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string, extraProperties map[string]any, simulateReply bool) string {
+func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, extraProperties map[string]any, simulateReply bool) string {
 	var msgId string
 	var qMgr ibmmq.MQQueueManager
 	var putMsgHandle ibmmq.MQMessageHandle
@@ -142,10 +142,18 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage string
 	pmo.Options |= ibmmq.MQPMO_NEW_MSG_ID
 	pmo.Options |= ibmmq.MQPMO_FAIL_IF_QUIESCING
 
-	// Set message content and reply queue
-	putmqmd.Format = ibmmq.MQFMT_STRING
+	// Set reply queue
 	putmqmd.ReplyToQ = replyQueue
-	buffer := []byte(sourceMessage)
+
+	// Prepare the message data
+	buffer := []byte{}
+	if _, ok := sourceMessage.(string); ok {
+		putmqmd.Format = ibmmq.MQFMT_STRING
+		buffer = []byte(sourceMessage.(string))
+	} else {
+		putmqmd.Format = ibmmq.MQFMT_NONE
+		buffer = sourceMessage.([]byte)
+	}
 
 	// Set extra properties
 	if len(extraProperties) > 0 {
