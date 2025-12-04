@@ -1,4 +1,4 @@
-FROM golang:1.24.2 AS builder
+FROM golang:1.25 AS builder
 
 ENV MQC_VERSION="9.4.4.0" \
     CGO_ENABLED=1 \
