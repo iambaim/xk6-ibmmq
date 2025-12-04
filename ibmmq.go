@@ -117,7 +117,7 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, e
 
 	// Set queue open options
 	mqod := ibmmq.NewMQOD()
-	openOptions := ibmmq.MQOO_OUTPUT
+	openOptions := ibmmq.MQOO_OUTPUT | ibmmq.MQOO_INPUT_AS_Q_DEF
 	mqod.ObjectType = ibmmq.MQOT_Q
 	mqod.ObjectName = sourceQueue
 
@@ -290,7 +290,7 @@ func (s *Ibmmq) replyToMessage(sendQueueName string) {
 		}
 	} else {
 		mqod = ibmmq.NewMQOD()
-		openOptions = ibmmq.MQOO_OUTPUT
+		openOptions = ibmmq.MQOO_OUTPUT | ibmmq.MQOO_INPUT_AS_Q_DEF
 		mqod.ObjectType = ibmmq.MQOT_Q
 		mqod.ObjectName = getmqmd.ReplyToQ
 
