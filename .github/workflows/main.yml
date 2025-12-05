@@ -37,15 +37,22 @@ jobs:
         working-directory: ./
         run: dspmqver
 
-      - name: Build and test
+      - name: Build
+        working-directory: ./
+        run: ./build.sh
+        shell: bash
+      
+      - name: Test
         working-directory: ./
         run: ./local-test.sh
         shell: bash
-      
-      - name: Build and test (SSL)
+        if: matrix.environment == 'ubuntu-latest'
+
+      - name: Test (SSL)
         working-directory: ./
         run: ./local-test-ssl.sh
         shell: bash
+        if: matrix.environment == 'ubuntu-latest'
       
       - uses: ncipollo/release-action@v1
         with:
