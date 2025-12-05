@@ -44,3 +44,9 @@ jobs:
       - name: Build and test (SSL)
         working-directory: ./
         run: ./local-test-ssl.sh
+      
+      - uses: ncipollo/release-action@v1
+        with:
+          artifacts: "./k6*"
+          draft: true
+        if: github.event_name == 'push'
