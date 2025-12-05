@@ -10,8 +10,8 @@ if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
     export CGO_CFLAGS="-I$MQ_INSTALLATION_PATH/inc"
     export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/lib64 -Wl,-rpath,$MQ_INSTALLATION_PATH/lib64"
   elif [[ "$OSTYPE" == "msys" ]]; then
-    export CGO_CFLAGS="-I$MQ_INSTALLATION_PATH/tools/c/include"
-    export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/tools/Lib64 -Wl,-rpath,$MQ_INSTALLATION_PATH/tools/Lib64"
+    export CGO_CFLAGS="-I$MQ_INSTALLATION_PATH/tools/c/include -D_WIN64"
+    export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/bin64 -lmqm"
   fi
   echo $MQ_INSTALLATION_PATH
   echo $CGO_LDFLAGS
