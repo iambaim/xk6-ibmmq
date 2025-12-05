@@ -1,24 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export MQ_INSTALLATION_PATH=/opt/mqm
-
-# Build
-# For github actions
-if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
-  export MQ_INSTALLATION_PATH=$HOME/IBM/MQ/data
-  export CGO_CFLAGS="-I$MQ_INSTALLATION_PATH/inc"
-  export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/lib64 -Wl,-rpath,$MQ_INSTALLATION_PATH/lib64"
-  echo $CGO_LDFLAGS
-fi
-
-go install go.k6.io/xk6/cmd/xk6@latest
-XK6_RACE_DETECTOR=1 GCO_ENABLED=1 xk6 build \
-    --with github.com/iambaim/xk6-ibmmq=.
-
 # Create ssl key
 rm -fr ./pki
 mkdir -p ./pki/keys/ibmwebspheremqqm1
+
+if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
+  export MQ_INSTALLATION_PATH=$HOME/IBM/MQ/data
+fi
 
 $MQ_INSTALLATION_PATH/bin/runmqakm -keydb -create -db ./pki/myqmgr.kdb -type cms -stash -pw password
 $MQ_INSTALLATION_PATH/bin/runmqakm -cert -create -db ./pki/myqmgr.kdb -stashed -label ibmwebspheremqqm1 -dn "CN=localhost,O=myOrganisation,OU=myDepartment,L=myLocation,C=NO"

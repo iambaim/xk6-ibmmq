@@ -1,20 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build
-
-# For github actions
-if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
-  export MQ_INSTALLATION_PATH=$HOME/IBM/MQ/data
-  export CGO_CFLAGS="-I$MQ_INSTALLATION_PATH/inc"
-  export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/lib64 -Wl,-rpath,$MQ_INSTALLATION_PATH/lib64"
-  echo $CGO_LDFLAGS
-fi
-
-go install go.k6.io/xk6/cmd/xk6@latest
-XK6_RACE_DETECTOR=1 GCO_ENABLED=1 xk6 build \
-    --with github.com/iambaim/xk6-ibmmq=.
-
 # Run dev MQ container and wait until MQ is ready
 docker compose -f example/docker-compose.yml up -d localmqtest
 while curl --output /dev/null --silent --head --fail localhost:1414 ; [ $? -ne 52 ];do
