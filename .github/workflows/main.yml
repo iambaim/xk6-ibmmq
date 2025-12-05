@@ -53,9 +53,13 @@ jobs:
         run: ./local-test-ssl.sh
         shell: bash
         if: matrix.environment == 'ubuntu-latest'
-      
+      - name: Create dynamic variable
+        run: echo "COMMIT_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+        shell: bash
+        if: github.event_name == 'push'
       - uses: ncipollo/release-action@v1
         with:
           artifacts: "./k6*"
           draft: true
+          tag: "build-${{ env.COMMIT_SHORT }}"
         if: github.event_name == 'push'
