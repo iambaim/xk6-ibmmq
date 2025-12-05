@@ -5,6 +5,10 @@ set -euo pipefail
 rm -fr ./pki
 mkdir -p ./pki/keys/ibmwebspheremqqm1
 
+if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
+  export MQ_INSTALLATION_PATH=$HOME/IBM/MQ/data
+fi
+
 $MQ_INSTALLATION_PATH/bin/runmqakm -keydb -create -db ./pki/myqmgr.kdb -type cms -stash -pw password
 $MQ_INSTALLATION_PATH/bin/runmqakm -cert -create -db ./pki/myqmgr.kdb -stashed -label ibmwebspheremqqm1 -dn "CN=localhost,O=myOrganisation,OU=myDepartment,L=myLocation,C=NO"
 $MQ_INSTALLATION_PATH/bin/runmqakm -cert -extract -db ./pki/myqmgr.kdb -stashed -label ibmwebspheremqqm1 -target ./pki/tls.crt -format ascii
