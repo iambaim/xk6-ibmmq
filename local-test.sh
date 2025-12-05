@@ -6,8 +6,14 @@ set -euo pipefail
 # For github actions
 if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
   export MQ_INSTALLATION_PATH=$HOME/IBM/MQ/data
-  export CGO_CFLAGS="-I$MQ_INSTALLATION_PATH/inc"
-  export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/lib64 -Wl,-rpath,$MQ_INSTALLATION_PATH/lib64"
+  if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    export CGO_CFLAGS="-I$MQ_INSTALLATION_PATH/inc"
+    export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/lib64 -Wl,-rpath,$MQ_INSTALLATION_PATH/lib64"
+  elif [[ "$OSTYPE" == "msys" ]]; then
+    export CGO_CFLAGS="-I$MQ_INSTALLATION_PATH/tools/c/include"
+    export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/tools/Lib64 -Wl,-rpath,$MQ_INSTALLATION_PATH/tools/Lib64"
+  fi
+  echo $MQ_INSTALLATION_PATH
   echo $CGO_LDFLAGS
 fi
 
