@@ -40,10 +40,12 @@ jobs:
       - name: Build and test
         working-directory: ./
         run: ./local-test.sh
+        shell: bash
       
       - name: Build and test (SSL)
         working-directory: ./
         run: ./local-test-ssl.sh
+        shell: bash
       
       - uses: ncipollo/release-action@v1
         with:
