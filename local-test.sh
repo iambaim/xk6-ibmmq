@@ -12,7 +12,7 @@ if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
 fi
 
 echo $MQ_INSTALLATION_PATH
-ls $MQ_INSTALLATION_PATH/inc
+ls $MQ_INSTALLATION_PATH
 
 go install go.k6.io/xk6/cmd/xk6@latest
 XK6_RACE_DETECTOR=1 GCO_ENABLED=1 xk6 -v build \
