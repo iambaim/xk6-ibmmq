@@ -12,7 +12,7 @@ jobs:
   build-test:
     strategy:
       matrix:
-        environment: ['ubuntu-latest']
+        environment: ['ubuntu-latest', 'windows-latest']
         mq-client-version: [9.4.4.0]
     runs-on: ${{ matrix.environment }}
     steps:
