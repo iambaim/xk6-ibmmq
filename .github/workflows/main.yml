@@ -61,5 +61,6 @@ jobs:
         with:
           artifacts: "./k6*"
           draft: true
+          allowUpdates: true
           tag: "build-${{ env.COMMIT_SHORT }}"
         if: github.event_name == 'push'
