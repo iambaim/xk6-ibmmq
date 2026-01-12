@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/ibm-messaging/mq-golang/v5 v5.7.0
 	github.com/walles/env v0.0.4
-	go.k6.io/k6 v1.4.2
+	go.k6.io/k6 v1.5.0
 )
 
 require (
