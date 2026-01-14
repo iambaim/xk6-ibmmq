@@ -43,7 +43,7 @@ jobs:
       name: Install MQ Client
       uses: SeyfSV/setup-mqclient@v0.3.1
       with:
-        mq-client-version: '9.4.4.0'
+        mq-client-version: '9.4.4.1'
 
     - if: matrix.language == 'go'
       name: Setup Go environment
