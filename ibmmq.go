@@ -32,6 +32,7 @@ func (s *Ibmmq) NewClient() int {
 	UserName := env.MustGet("MQ_USERID", env.String)
 	Password := env.MustGet("MQ_PASSWORD", env.String)
 	SSLKeystore := env.GetOr("MQ_TLS_KEYSTORE", env.String, "")
+	SSLCipherSpec := env.GetOr("MQ_TLS_CIPHER_SPEC", env.String, "ANY_TLS12_OR_HIGHER")
 
 	// Allocate new MQCNO and MQCD structures
 	cno := ibmmq.NewMQCNO()
@@ -54,7 +55,7 @@ func (s *Ibmmq) NewClient() int {
 	// If SSL is used set the necessary MQSCO
 	if SSLKeystore != "" {
 		sco := ibmmq.NewMQSCO()
-		cd.SSLCipherSpec = "ANY_TLS12_OR_HIGHER"
+		cd.SSLCipherSpec = SSLCipherSpec
 		sco.KeyRepository = SSLKeystore
 		cno.SSLConfig = sco
 	}
@@ -92,17 +93,17 @@ func (s *Ibmmq) Connect() ibmmq.MQQueueManager {
 	// Connect to the Queue Manager
 	qMgr, err := ibmmq.Connx(s.QMName, s.cno)
 	if err != nil {
-		if err.(*ibmmq.MQReturn).MQRC == ibmmq.MQRC_SSL_INITIALIZATION_ERROR {
-			for {
-				qMgr, err = ibmmq.Connx(s.QMName, s.cno)
-				if err == nil {
-					break
-				}
-			}
-		} else {
-			rc := int(err.(*ibmmq.MQReturn).MQCC)
-			log.Fatal("Error during Connect: " + strconv.Itoa(rc) + err.Error())
-		}
+		// if err.(*ibmmq.MQReturn).MQRC == ibmmq.MQRC_SSL_INITIALIZATION_ERROR {
+		// 	for {
+		// 		qMgr, err = ibmmq.Connx(s.QMName, s.cno)
+		// 		if err == nil {
+		// 			break
+		// 		}
+		// 	}
+		// } else {
+		rc := int(err.(*ibmmq.MQReturn).MQCC)
+		log.Fatal("Error during Connect: " + strconv.Itoa(rc) + err.Error())
+		// }
 	}
 	return qMgr
 }
