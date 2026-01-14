@@ -38,6 +38,8 @@ export MQ_TLS_KEYSTORE="./pki/myqmgr"
 # for MacOS use the below
 #export MQ_TLS_KEYSTORE="./pki/tls.crt"
 
+export MQ_TLS_CIPHER_SPEC="ANY_TLS12_OR_HIGHER"
+
 # Also for MacOS we need to keep the VU number 1,
 # perhaps a bug in the MQ client for MacOS?
 ./k6 run --vus 2 --duration 5s example/localtest.js
