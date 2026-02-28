@@ -1,7 +1,6 @@
 import { check } from 'k6';
 import ibmmq from 'k6/x/ibmmq';
 
-// Initialize client and establish connection (reused across all VUs and iterations)
 const rc = ibmmq.newClient()
 
 export default function () {
@@ -33,9 +32,4 @@ export default function () {
     check(rc, {
         'Verify return code': (r) => r == 0,
     });
-}
-
-// Teardown: disconnect from Queue Manager
-export function teardown() {
-    ibmmq.disconnect()
 }
