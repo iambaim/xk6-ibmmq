@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/ibm-messaging/mq-golang/v5/ibmmq"
 	"go.k6.io/k6/js/modules"
@@ -17,6 +18,8 @@ func init() {
 type Ibmmq struct {
 	QMName string
 	cno    *ibmmq.MQCNO
+	qMgr   *ibmmq.MQQueueManager
+	mu     sync.Mutex
 }
 
 /*
@@ -87,35 +90,65 @@ func (s *Ibmmq) NewClient() (int, error) {
 		cno.SecurityParms = csp
 	}
 
-	// And now we can try to connect for the first time and defer the disconnection
+	// Update the state information
+	s.mu.Lock()
+	s.QMName = QMName
+	s.cno = cno
+
+	// Establish initial connection and keep it for reuse
 	qMgr, err := ibmmq.Connx(QMName, cno)
-	if err == nil {
-		rc = 0
-		defer qMgr.Disc()
-		// Update the state information
-		s.QMName = QMName
-		s.cno = cno
-	} else {
+	if err != nil {
+		s.mu.Unlock()
 		rc = int(err.(*ibmmq.MQReturn).MQCC)
 		return rc, fmt.Errorf("error in making the initial connection (MQCC=%d): %w", rc, err)
 	}
-	return rc, nil
+	s.qMgr = &qMgr
+	s.mu.Unlock()
+	return 0, nil
 }
 
 /*
  * Connect to Queue Manager.
  */
 func (s *Ibmmq) Connect() (ibmmq.MQQueueManager, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.cno == nil {
 		return ibmmq.MQQueueManager{}, fmt.Errorf("error during Connect: client not initialized, call NewClient() first")
 	}
-	// Connect to the Queue Manager
+
+	// Return cached connection if available
+	if s.qMgr != nil {
+		return *s.qMgr, nil
+	}
+
+	// Establish a new connection
 	qMgr, err := ibmmq.Connx(s.QMName, s.cno)
 	if err != nil {
 		rc := int(err.(*ibmmq.MQReturn).MQCC)
 		return qMgr, fmt.Errorf("error during Connect (MQCC=%d): %w", rc, err)
 	}
+	s.qMgr = &qMgr
 	return qMgr, nil
+}
+
+/*
+ * Disconnect from Queue Manager. Call this during teardown.
+ */
+func (s *Ibmmq) Disconnect() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.qMgr == nil {
+		return nil
+	}
+	err := s.qMgr.Disc()
+	s.qMgr = nil
+	if err != nil {
+		return fmt.Errorf("error during Disconnect: %w", err)
+	}
+	return nil
 }
 
 /*
@@ -131,12 +164,11 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, e
 	mqod.ObjectType = ibmmq.MQOT_Q
 	mqod.ObjectName = sourceQueue
 
-	// Connect to Queue Manager
+	// Connect to Queue Manager (reuses existing connection)
 	qMgr, err := s.Connect()
 	if err != nil {
 		return "", err
 	}
-	defer qMgr.Disc()
 
 	// Open queue
 	qObject, err := qMgr.Open(mqod, openOptions)
@@ -225,12 +257,11 @@ func (s *Ibmmq) Receive(replyQueue string, msgId string, waitInterval int32) (in
 	mqod.ObjectType = ibmmq.MQOT_Q
 	mqod.ObjectName = replyQueue
 
-	// Call connect
+	// Call connect (reuses existing connection)
 	qMgr, err := s.Connect()
 	if err != nil {
 		return 1, "", err
 	}
-	defer qMgr.Disc()
 
 	// Open queue
 	qObject, err := qMgr.Open(mqod, openOptions)
@@ -285,7 +316,6 @@ func (s *Ibmmq) replyToMessage(sendQueueName string) error {
 	if err != nil {
 		return err
 	}
-	defer qMgr.Disc()
 
 	qObject, err := qMgr.Open(mqod, openOptions)
 	if err != nil {
