@@ -3,10 +3,11 @@ package xk6ibmmq
 import (
 	"encoding/hex"
 	"fmt"
+	"log"
+	"os"
+
 	"github.com/ibm-messaging/mq-golang/v5/ibmmq"
-	"github.com/walles/env"
 	"go.k6.io/k6/js/modules"
-	"strconv"
 )
 
 func init() {
@@ -25,14 +26,29 @@ func (s *Ibmmq) NewClient() (int, error) {
 	var rc int
 
 	// Get all the environment variables
-	QMName := env.MustGet("MQ_QMGR", env.String)
-	Hostname := env.MustGet("MQ_HOST", env.String)
-	PortNumber := env.MustGet("MQ_PORT", env.String)
-	ChannelName := env.MustGet("MQ_CHANNEL", env.String)
-	UserName := env.MustGet("MQ_USERID", env.String)
-	Password := env.MustGet("MQ_PASSWORD", env.String)
-	SSLKeystore := env.GetOr("MQ_TLS_KEYSTORE", env.String, "")
-	SSLCipherSpec := env.GetOr("MQ_TLS_CIPHER_SPEC", env.String, "ANY_TLS12_OR_HIGHER")
+	QMName, err := getRequiredEnv("MQ_QMGR")
+	if err != nil {
+		return 0, err
+	}
+	Hostname, err := getRequiredEnv("MQ_HOST")
+	if err != nil {
+		return 0, err
+	}
+	PortNumber, err := getRequiredEnv("MQ_PORT")
+	if err != nil {
+		return 0, err
+	}
+	ChannelName, err := getRequiredEnv("MQ_CHANNEL")
+	if err != nil {
+		return 0, err
+	}
+	UserName := os.Getenv("MQ_USERID")
+	Password := os.Getenv("MQ_PASSWORD")
+	SSLKeystore := os.Getenv("MQ_TLS_KEYSTORE")
+	SSLCipherSpec := os.Getenv("MQ_TLS_CIPHER_SPEC")
+	if SSLCipherSpec == "" {
+		SSLCipherSpec = "ANY_TLS12_OR_HIGHER"
+	}
 
 	// Allocate new MQCNO and MQCD structures
 	cno := ibmmq.NewMQCNO()
@@ -81,7 +97,7 @@ func (s *Ibmmq) NewClient() (int, error) {
 		s.cno = cno
 	} else {
 		rc = int(err.(*ibmmq.MQReturn).MQCC)
-		return rc, fmt.Errorf("error in making the initial connection: %s %w", strconv.Itoa(rc), err)
+		return rc, fmt.Errorf("error in making the initial connection (MQCC=%d): %w", rc, err)
 	}
 	return rc, nil
 }
@@ -90,11 +106,14 @@ func (s *Ibmmq) NewClient() (int, error) {
  * Connect to Queue Manager.
  */
 func (s *Ibmmq) Connect() (ibmmq.MQQueueManager, error) {
+	if s.cno == nil {
+		return ibmmq.MQQueueManager{}, fmt.Errorf("error during Connect: client not initialized, call NewClient() first")
+	}
 	// Connect to the Queue Manager
 	qMgr, err := ibmmq.Connx(s.QMName, s.cno)
 	if err != nil {
 		rc := int(err.(*ibmmq.MQReturn).MQCC)
-		return qMgr, fmt.Errorf("error during Connect: %s %w", strconv.Itoa(rc), err)
+		return qMgr, fmt.Errorf("error during Connect (MQCC=%d): %w", rc, err)
 	}
 	return qMgr, nil
 }
@@ -108,7 +127,7 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, e
 
 	// Set queue open options
 	mqod := ibmmq.NewMQOD()
-	openOptions := ibmmq.MQOO_OUTPUT | ibmmq.MQOO_INPUT_AS_Q_DEF
+	openOptions := ibmmq.MQOO_OUTPUT
 	mqod.ObjectType = ibmmq.MQOT_Q
 	mqod.ObjectName = sourceQueue
 
@@ -139,13 +158,16 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, e
 	putmqmd.ReplyToQ = replyQueue
 
 	// Prepare the message data
-	buffer := []byte{}
-	if _, ok := sourceMessage.(string); ok {
+	var buffer []byte
+	switch msg := sourceMessage.(type) {
+	case string:
 		putmqmd.Format = ibmmq.MQFMT_STRING
-		buffer = []byte(sourceMessage.(string))
-	} else {
+		buffer = []byte(msg)
+	case []byte:
 		putmqmd.Format = ibmmq.MQFMT_NONE
-		buffer = sourceMessage.([]byte)
+		buffer = msg
+	default:
+		return "", fmt.Errorf("unsupported sourceMessage type %T, expected string or []byte", sourceMessage)
 	}
 
 	// Set extra properties
@@ -155,7 +177,11 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, e
 		if err != nil {
 			return "", fmt.Errorf("error in setting putMsgHandle: %w", err)
 		}
-		defer dltMh(putMsgHandle)
+		defer func() {
+			if err := dltMh(putMsgHandle); err != nil {
+				log.Printf("warning: %v", err)
+			}
+		}()
 
 		smpo := ibmmq.NewMQSMPO()
 		pd := ibmmq.NewMQPD()
@@ -223,7 +249,10 @@ func (s *Ibmmq) Receive(replyQueue string, msgId string, waitInterval int32) (in
 	gmo.WaitInterval = waitInterval
 
 	// Match the correlation id
-	getmqmd.CorrelId, _ = hex.DecodeString(msgId)
+	getmqmd.CorrelId, err = hex.DecodeString(msgId)
+	if err != nil {
+		return 1, "", fmt.Errorf("invalid msgId hex string %q: %w", msgId, err)
+	}
 	gmo.MatchOptions = ibmmq.MQMO_MATCH_CORREL_ID
 	gmo.Version = ibmmq.MQGMO_VERSION_2
 
@@ -282,7 +311,7 @@ func (s *Ibmmq) replyToMessage(sendQueueName string) error {
 	}
 
 	mqod = ibmmq.NewMQOD()
-	openOptions = ibmmq.MQOO_OUTPUT | ibmmq.MQOO_INPUT_AS_Q_DEF
+	openOptions = ibmmq.MQOO_OUTPUT
 	mqod.ObjectType = ibmmq.MQOT_Q
 	mqod.ObjectName = getmqmd.ReplyToQ
 
@@ -316,4 +345,13 @@ func dltMh(mh ibmmq.MQMessageHandle) error {
 		return fmt.Errorf("unable to close a msg handle: %w", err)
 	}
 	return nil
+}
+
+// getRequiredEnv returns the value of the environment variable or an error if not set.
+func getRequiredEnv(key string) (string, error) {
+	val := os.Getenv(key)
+	if val == "" {
+		return "", fmt.Errorf("required environment variable %s is not set", key)
+	}
+	return val, nil
 }
