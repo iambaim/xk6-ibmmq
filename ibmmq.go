@@ -11,9 +11,41 @@ import (
 )
 
 func init() {
-	modules.Register("k6/x/ibmmq", new(Ibmmq))
+	modules.Register("k6/x/ibmmq", new(RootModule))
 }
 
+// RootModule is the global module object registered with k6.
+// It creates a new per-VU ModuleInstance for each VU.
+type RootModule struct{}
+
+// Ensure RootModule implements modules.Module.
+var _ modules.Module = &RootModule{}
+
+// NewModuleInstance creates a new per-VU module instance.
+func (*RootModule) NewModuleInstance(vu modules.VU) modules.Instance {
+	return &ModuleInstance{
+		vu:    vu,
+		ibmmq: &Ibmmq{},
+	}
+}
+
+// ModuleInstance is a per-VU instance of the IBM MQ module.
+type ModuleInstance struct {
+	vu    modules.VU
+	ibmmq *Ibmmq
+}
+
+// Ensure ModuleInstance implements modules.Instance.
+var _ modules.Instance = &ModuleInstance{}
+
+// Exports returns the module's exported members accessible from JavaScript.
+func (mi *ModuleInstance) Exports() modules.Exports {
+	return modules.Exports{
+		Default: mi.ibmmq,
+	}
+}
+
+// Ibmmq is the per-VU IBM MQ client exposed to JavaScript.
 type Ibmmq struct {
 	QMName string
 	cno    *ibmmq.MQCNO
@@ -23,8 +55,6 @@ type Ibmmq struct {
  * Initialize Queue Manager connection.
  */
 func (s *Ibmmq) NewClient() (int, error) {
-	var rc int
-
 	// Get all the environment variables
 	QMName, err := getRequiredEnv("MQ_QMGR")
 	if err != nil {
@@ -87,19 +117,10 @@ func (s *Ibmmq) NewClient() (int, error) {
 		cno.SecurityParms = csp
 	}
 
-	// And now we can try to connect for the first time and defer the disconnection
-	qMgr, err := ibmmq.Connx(QMName, cno)
-	if err == nil {
-		rc = 0
-		defer qMgr.Disc()
-		// Update the state information
-		s.QMName = QMName
-		s.cno = cno
-	} else {
-		rc = int(err.(*ibmmq.MQReturn).MQCC)
-		return rc, fmt.Errorf("error in making the initial connection (MQCC=%d): %w", rc, err)
-	}
-	return rc, nil
+	// Store the state information for later use by Connect()
+	s.QMName = QMName
+	s.cno = cno
+	return 0, nil
 }
 
 /*
