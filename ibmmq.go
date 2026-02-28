@@ -207,7 +207,7 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, e
 
 	// Check if we need to simulate the reply
 	if simulateReply {
-		if simErr := s.replyToMessage(sourceQueue); simErr != nil {
+		if simErr := s.replyToMessage(sourceQueue, putmqmd.MsgId); simErr != nil {
 			return "", simErr
 		}
 	}
@@ -274,8 +274,9 @@ func (s *Ibmmq) Receive(replyQueue string, msgId string, waitInterval int32) (in
 
 /*
  * Simulate another application replying to a message.
+ * sentMsgId is the MsgId of the message just put, used to match exactly that message.
  */
-func (s *Ibmmq) replyToMessage(sendQueueName string) error {
+func (s *Ibmmq) replyToMessage(sendQueueName string, sentMsgId []byte) error {
 	mqod := ibmmq.NewMQOD()
 	openOptions := ibmmq.MQOO_INPUT_SHARED
 	mqod.ObjectType = ibmmq.MQOT_Q
@@ -298,6 +299,11 @@ func (s *Ibmmq) replyToMessage(sendQueueName string) error {
 	gmo.Options = ibmmq.MQGMO_NO_SYNCPOINT
 	gmo.Options |= ibmmq.MQGMO_WAIT
 	gmo.WaitInterval = 3 * 1000
+
+	// Match on the specific MsgId so we only consume the message this VU sent
+	getmqmd.MsgId = sentMsgId
+	gmo.MatchOptions = ibmmq.MQMO_MATCH_MSG_ID
+	gmo.Version = ibmmq.MQGMO_VERSION_2
 
 	buffer := make([]byte, 0, 1024)
 	buffer, _, err = qObject.GetSlice(getmqmd, gmo, buffer)
