@@ -14,7 +14,7 @@ if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
     export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/bin64 -lmqm"
   fi
   echo $MQ_INSTALLATION_PATH
-  echo $CGO_LDFLAGS
+  echo "${CGO_LDFLAGS-}"
 fi
 
 go install go.k6.io/xk6/cmd/xk6@latest
