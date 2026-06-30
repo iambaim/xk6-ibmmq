@@ -10,7 +10,7 @@ if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
   if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     export CGO_CFLAGS="-I$MQ_INSTALLATION_PATH/inc"
     export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/lib64 -Wl,-rpath,$MQ_INSTALLATION_PATH/lib64"
-  elif [[ "$OSTYPE" == "msys" ]]; then
+  elif [[ "$OSTYPE" == msys* || "$OSTYPE" == mingw* || "$OSTYPE" == cygwin* ]]; then
     export CGO_CFLAGS="-I$MQ_INSTALLATION_PATH/tools/c/include -D_WIN64"
     export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/bin64 -lmqm"
   fi
