@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/ibm-messaging/mq-golang/v5/ibmmq"
-	"go.k6.io/k6/js/modules"
+	"go.k6.io/k6/v2/js/modules"
 )
 
 func init() {

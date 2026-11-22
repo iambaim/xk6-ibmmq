@@ -32,6 +32,8 @@ jobs:
       
       - name: Setup Go environment
         uses: actions/setup-go@v5.0.1
+        with:
+          go-version-file: go.mod
             
       - name: Check MQ version
         working-directory: ./
