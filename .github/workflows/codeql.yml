@@ -32,13 +32,6 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Initializes the CodeQL tools for scanning.
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: ${{ matrix.language }}
-        build-mode: ${{ matrix.build-mode }}
-
     - if: matrix.language == 'go'
       name: Install MQ Client
       uses: SeyfSV/setup-mqclient@v0.3.1
@@ -50,6 +43,13 @@ jobs:
       uses: actions/setup-go@v5.0.1
       with:
         go-version-file: go.mod
+
+    # Initialize after setup-go so the manual build uses CodeQL's Go wrapper.
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+        build-mode: ${{ matrix.build-mode }}
 
     - if: matrix.language == 'go'
       shell: bash
