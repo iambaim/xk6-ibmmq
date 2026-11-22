@@ -92,3 +92,25 @@ export default function () {
     check(reply, { 'received matching echo': (body) => rc === 0 && body === message });
 }
 ```
+
+### Send with message properties
+
+Pass a JavaScript object as the fourth argument to `send()` to attach IBM MQ
+message properties. This one-way example uses `DEV.QUEUE.1` from the local
+container and leaves the reply queue blank.
+
+```javascript
+import ibmmq from 'k6/x/ibmmq';
+
+ibmmq.newClient();
+
+export default function () {
+    ibmmq.send('DEV.QUEUE.1', '', 'Order shipped', {
+        apiVersion: 2,
+        extraText: 'extra',
+    });
+}
+```
+
+The echo test passes `null` because IBM's sample responder can include the
+MQ property header in its reply, which would break the plain-text comparison.
