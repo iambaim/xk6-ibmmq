@@ -1,6 +1,6 @@
 FROM golang:1.26-bookworm AS builder
 
-ENV MQC_VERSION="9.4.4.1" \
+ENV MQC_VERSION="9.4.5.1" \
     CGO_CFLAGS="-I/opt/mqm/inc" \
     CGO_LDFLAGS="-L/opt/mqm/lib64 -Wl,-rpath=/opt/mqm/lib64" \
     genmqpkg_inctls=1
