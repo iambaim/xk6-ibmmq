@@ -47,9 +47,8 @@ To configure the MQ connection factory, you need to set these environment variab
 ## Run local test
 
 Run `./build.sh`, then `./local-test.sh` or `./local-test-ssl.sh` for TLS.
-Both scripts start an IBM MQ container with a test-only echo responder and run
-[`example/localtest.js`](./example/localtest.js). The responder echoes the
-request body and uses the request's message ID as the reply's correlation ID.
+Both scripts start the IBM MQ container and run
+[`example/localtest.js`](./example/localtest.js).
 
 ### Migrating from simulated replies
 
@@ -58,8 +57,8 @@ start a separate responder before running your test. `send()` puts one message
 on the source queue and returns its message ID; it no longer consumes the
 request or generates a reply.
 
-A nonempty reply queue sets the MQ message type to `MQMT_REQUEST`. Pass `''`
-for a one-way `MQMT_DATAGRAM`, and pass `null` if there are no message properties.
+A nonempty reply queue now sends `MQMT_REQUEST` instead of `MQMT_DATAGRAM`.
+Pass `''` as the reply queue for a one-way `MQMT_DATAGRAM`.
 
 ## Example test
 
@@ -76,6 +75,24 @@ $ ./k6 run example/localtest.js
 $ docker compose -f example/docker-compose.yml down
 ```
 
+### Where the reply comes from
+
+The Compose container loads [`example/echo.mqsc`](./example/echo.mqsc), which
+configures IBM MQ to launch the `amqsech` sample when a request arrives on
+`DEV.XK6.REQUEST`. There is no separate responder to start for this example.
+
+1. The script sends `My Message` to `DEV.XK6.REQUEST` and sets `ReplyToQ`
+   to `DEV.XK6.REPLY`. `send()` returns the request's message ID without
+   waiting for the reply.
+2. `amqsech` reads the request and puts `My Message` on `DEV.XK6.REPLY`.
+   It copies the request's `MsgId` into the reply's `CorrelId`.
+3. `receive()` uses `msgId` to pick that reply from `DEV.XK6.REPLY`, even if
+   other replies are on the same queue. It waits up to 3,000 ms for a match.
+   If none arrives, `receive()` returns `[0, '']` and the body check fails.
+
+The snippet below shows one round trip. `example/localtest.js` uses a distinct
+message for each virtual user and iteration so the check can catch a mix-up.
+
 ```javascript
 import { check } from 'k6';
 import ibmmq from 'k6/x/ibmmq';
@@ -90,11 +107,15 @@ export default function () {
 }
 ```
 
+When testing your own application, use its queues in place of the `DEV.XK6.*`
+queues. Your application takes the place of `amqsech` and must set the reply's
+`CorrelId` to the request's `MsgId` for `receive()` to find it.
+
 ### Send with message properties
 
 Pass a JavaScript object as the fourth argument to `send()` to attach IBM MQ
-message properties. This one-way example uses `DEV.QUEUE.1` from the local
-container and leaves the reply queue blank.
+message properties, or pass `null` if none are needed. This one-way example
+uses `DEV.QUEUE.1` from the local container and leaves the reply queue blank.
 
 ```javascript
 import ibmmq from 'k6/x/ibmmq';
