@@ -3,9 +3,6 @@
 [k6 v2](https://grafana.com/docs/k6/latest/) extension for [IBM MQ](https://www.ibm.com/products/mq) using the [xk6](https://github.com/grafana/xk6)
 system.
 
-| :exclamation: This is still a very rudimentary implementation. Breaking changes are expected. USE AT YOUR OWN RISK! |
-|------|
-
 ## Prerequisites
 
 IBM MQ client (Linux/Win) or toolkit (Mac) installation is required to build and run this extension. 
@@ -114,3 +111,25 @@ export default function () {
 
 The echo test passes `null` because IBM's sample responder can include the
 MQ property header in its reply, which would break the plain-text comparison.
+
+## Cut a release
+
+After merging to `main`, tag the commit you want to release and push the tag.
+For example, for version `v0.1.0`:
+
+```sh
+git switch main
+git pull --ff-only
+git tag -a v0.1.0 -m 'Release v0.1.0'
+git push origin v0.1.0
+```
+
+The Release workflow runs the build and smoke tests, then creates a draft
+GitHub release with Linux and Windows x86-64 archives and `SHA256SUMS`. The
+archives do not bundle the IBM MQ client; install it before running the binary.
+Tags such as `v0.1.0-rc.1` are marked as prereleases.
+
+Review the draft's notes and assets, then publish it in GitHub. Publishing
+the draft builds and pushes the Linux x86-64 container image with the same tag,
+for example `ghcr.io/iambaim/xk6-ibmmq:v0.1.0`. The image bundles the IBM MQ
+runtime, so no client installation is needed on the host.

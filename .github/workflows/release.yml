@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: '!github.event.deleted'
+    runs-on: ubuntu-latest
+    outputs:
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release tag
+        id: tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          number='(0|[1-9][0-9]*)'
+          identifier="(${number}|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+          semver="^v${number}\.${number}\.${number}(-${identifier}(\.${identifier})*)?$"
+          if [[ ! "$RELEASE_TAG" =~ $semver || ${#RELEASE_TAG} -gt 128 ]]; then
+            echo 'Use a version tag such as v0.1.0 or v0.1.0-rc.1.' >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo 'Tag a commit that has already been merged to main.' >&2
+            exit 1
+          fi
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            echo 'prerelease=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'prerelease=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: validate
+    uses: ./.github/workflows/main.yml
+    with:
+      package-release: true
+
+  draft:
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Generate checksums
+        working-directory: dist
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          sha256sum "xk6-ibmmq-${RELEASE_TAG}-linux-amd64.tar.gz" \
+            "xk6-ibmmq-${RELEASE_TAG}-windows-amd64.zip" > SHA256SUMS
+      - name: Create draft GitHub release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref_name }}
+          artifacts: dist/*
+          artifactErrorsFailBuild: true
+          draft: true
+          prerelease: ${{ needs.validate.outputs.prerelease }}
+          generateReleaseNotes: true
+          body: The Linux and Windows binaries require the IBM MQ client at runtime.
+          allowUpdates: true
+          updateOnlyUnreleased: true
+          omitBodyDuringUpdate: true
+          skipIfReleaseExists: true

@@ -14,10 +14,10 @@ if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
     export CGO_CFLAGS="-I$MQ_INSTALLATION_PATH/tools/c/include -D_WIN64"
     export CGO_LDFLAGS="-L$MQ_INSTALLATION_PATH/bin64 -lmqm"
   fi
-  echo $MQ_INSTALLATION_PATH
+  echo "$MQ_INSTALLATION_PATH"
   echo "${CGO_LDFLAGS-}"
 fi
 
 k6_version=$(go list -m -f '{{.Version}}' go.k6.io/k6/v2)
-XK6_RACE_DETECTOR=1 CGO_ENABLED=1 go run go.k6.io/xk6/cmd/xk6@v1.5.1 -v build "$k6_version" \
+XK6_RACE_DETECTOR="${XK6_RACE_DETECTOR:-1}" CGO_ENABLED=1 go run go.k6.io/xk6/cmd/xk6@v1.5.1 -v build "$k6_version" \
     --with github.com/iambaim/xk6-ibmmq=. "$@"

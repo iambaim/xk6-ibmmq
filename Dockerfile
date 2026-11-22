@@ -23,7 +23,8 @@ WORKDIR /workspace
 
 # Build the k6 binary with the xk6-ibmmq extension
 COPY go.mod go.sum ibmmq.go build.sh ./
-RUN ./build.sh --output /k6
+ARG XK6_RACE_DETECTOR=1
+RUN XK6_RACE_DETECTOR="$XK6_RACE_DETECTOR" ./build.sh --output /k6
 
 FROM gcr.io/distroless/base-debian12:latest
 
