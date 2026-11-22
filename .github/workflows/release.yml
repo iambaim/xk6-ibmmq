@@ -2,66 +2,96 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable version tag (for example, v0.1.1)
+        required: true
+        type: string
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  validate:
-    if: '!github.event.deleted'
-    runs-on: ubuntu-latest
+  resolve-tag:
+    if: github.event_name != 'push' || !github.event.deleted
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     outputs:
-      prerelease: ${{ steps.tag.outputs.prerelease }}
+      tag: ${{ steps.tag.outputs.tag }}
+      commit: ${{ steps.tag.outputs.commit }}
+      tag_object: ${{ steps.tag.outputs.tag_object }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Fetch main and tags
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
-      - name: Validate release tag
+      - name: Verify release tag
         id: tag
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          number='(0|[1-9][0-9]*)'
-          identifier="(${number}|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
-          semver="^v${number}\.${number}\.${number}(-${identifier}(\.${identifier})*)?$"
-          if [[ ! "$RELEASE_TAG" =~ $semver || ${#RELEASE_TAG} -gt 128 ]]; then
-            echo 'Use a version tag such as v0.1.0 or v0.1.0-rc.1.' >&2
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" != refs/heads/main ]]; then
+            echo 'Run manual releases from main.' >&2
             exit 1
           fi
-          if ! git merge-base --is-ancestor HEAD origin/main; then
-            echo 'Tag a commit that has already been merged to main.' >&2
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo 'The tag must be a stable version such as v0.1.1.' >&2
             exit 1
           fi
-          if [[ "$RELEASE_TAG" == *-* ]]; then
-            echo 'prerelease=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'prerelease=false' >> "$GITHUB_OUTPUT"
+          tag_object=$(git rev-parse --verify "refs/tags/$TAG")
+          commit=$(git rev-parse --verify "$tag_object^{commit}")
+          if [[ "$GITHUB_EVENT_NAME" == push && "$commit" != "$(git rev-parse "$GITHUB_SHA^{commit}")" ]]; then
+            echo 'The tag no longer points to the commit that triggered this run.' >&2
+            exit 1
           fi
+          if ! git merge-base --is-ancestor "$commit" HEAD; then
+            echo 'The tagged commit must be on main.' >&2
+            exit 1
+          fi
+          printf 'tag=%s\ncommit=%s\ntag_object=%s\n' "$TAG" "$commit" "$tag_object" >> "$GITHUB_OUTPUT"
 
-  draft:
-    needs: validate
-    runs-on: ubuntu-latest
+  test:
+    needs: resolve-tag
+    permissions:
+      contents: read
+    uses: ./.github/workflows/main.yml
+    with:
+      ref: ${{ needs.resolve-tag.outputs.commit }}
+
+  publish:
+    needs: [resolve-tag, test]
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - name: Create draft source release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: ${{ github.ref_name }}
-          draft: true
-          prerelease: ${{ needs.validate.outputs.prerelease }}
-          generateReleaseNotes: true
-          body: |
-            This is a source-only release. See the [build instructions](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/README.md#build) for the IBM MQ client and local build steps.
-          allowUpdates: true
-          updateOnlyUnreleased: true
-          omitBodyDuringUpdate: true
-          skipIfReleaseExists: true
+      - name: Publish source-only GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.resolve-tag.outputs.tag }}
+          TAG_OBJECT: ${{ needs.resolve-tag.outputs.tag_object }}
+        run: |
+          current_tag=$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq '.object.sha')
+          if [[ "$current_tag" != "$TAG_OBJECT" ]]; then
+            echo 'The tag changed after validation; refusing to publish.' >&2
+            exit 1
+          fi
+          if release=$(gh release view "$TAG" --json isDraft,url --jq 'if .isDraft then "draft" else .url end'); then
+            if [[ "$release" == draft ]]; then
+              echo 'A draft already exists; review and publish it from GitHub.' >&2
+              exit 1
+            fi
+            printf 'Release already exists: %s\n' "$release"
+            exit 0
+          fi
+          gh release create "$TAG" --verify-tag --generate-notes

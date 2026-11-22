@@ -1,6 +1,12 @@
 name: Build and Test
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref or commit to test
+        required: true
+        type: string
   pull_request:
     branches:
     - main
@@ -19,7 +25,10 @@ jobs:
         mq-client-version: ['9.4.5.1']
     runs-on: ${{ matrix.environment }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref }}
 
       - name: Install MQ Client
         uses: SeyfSV/setup-mqclient@v0.3.1

@@ -123,8 +123,8 @@ queues. Your application takes the place of `amqsech` and must set the reply's
 
 ## Cut a release
 
-After the changes merge to `main` and CI passes, tag the commit and push the
-tag. For example, for version `v0.1.1`:
+Push a stable version tag (`vX.Y.Z`) for a commit on `main`. For example, for
+version `v0.1.1`:
 
 ```sh
 git switch main
@@ -133,10 +133,13 @@ git tag -a v0.1.1 -m 'Release v0.1.1'
 git push origin v0.1.1
 ```
 
-The Release workflow creates a draft with release notes. Review the notes and
-publish the draft in GitHub. GitHub provides the source archives for the tag;
-there are no binary assets or registry images. Tags such as `v0.1.1-rc.1` are
-marked as prereleases.
+The [Release workflow](https://github.com/iambaim/xk6-ibmmq/actions/workflows/release.yml)
+builds the tagged commit on Linux and Windows and runs the MQ smoke tests on
+Linux. If those checks pass, it publishes a GitHub release with generated notes
+and source archives. It does not upload binaries or publish container images.
+
+To publish an existing stable tag, run **Release** from `main` and enter the
+tag. The workflow tests the tagged commit without moving or recreating the tag.
 
 ## Licenses
 
