@@ -43,6 +43,7 @@ jobs:
       uses: actions/setup-go@v5.0.1
       with:
         go-version-file: go.mod
+        cache: false
 
     # Initialize after setup-go so the manual build uses CodeQL's Go wrapper.
     - name: Initialize CodeQL
