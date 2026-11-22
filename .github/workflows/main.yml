@@ -7,11 +7,6 @@ on:
   push:
     branches:
     - main
-  workflow_call:
-    inputs:
-      package-release:
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -26,12 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache MQ Client
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/distr
-          key: mqclient-${{ runner.os }}-${{ matrix.mq-client-version }}
-
       - name: Install MQ Client
         uses: SeyfSV/setup-mqclient@v0.3.1
         with:
@@ -42,6 +31,11 @@ jobs:
         uses: actions/setup-go@v5.0.1
         with:
           go-version-file: go.mod
+          cache: false
+
+      - name: Check third-party license inventory
+        if: runner.os == 'Linux'
+        run: python3 scripts/update-third-party-licenses.py --check
             
       - name: Check MQ version
         working-directory: ./
@@ -51,8 +45,6 @@ jobs:
         working-directory: ./
         run: ./build.sh
         shell: bash
-        env:
-          XK6_RACE_DETECTOR: ${{ inputs.package-release && '0' || '1' }}
       
       - name: Test
         working-directory: ./
@@ -65,31 +57,3 @@ jobs:
         run: ./local-test-ssl.sh
         shell: bash
         if: matrix.environment == 'ubuntu-latest'
-      - name: Package Linux binary
-        if: inputs.package-release && runner.os == 'Linux'
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          ./k6 version
-          mkdir -p dist
-          tar -czf "dist/xk6-ibmmq-${RELEASE_TAG}-linux-amd64.tar.gz" k6 LICENSE
-
-      - name: Package Windows binary
-        if: inputs.package-release && runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          .\k6.exe version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          New-Item -ItemType Directory -Path dist -Force | Out-Null
-          Compress-Archive -Path k6.exe, LICENSE -DestinationPath "dist/xk6-ibmmq-${env:GITHUB_REF_NAME}-windows-amd64.zip"
-
-      - name: Upload release archive
-        if: inputs.package-release
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ runner.os }}
-          path: dist/*
-          if-no-files-found: error
-          compression-level: 0
-          overwrite: true

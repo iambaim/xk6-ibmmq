@@ -46,42 +46,21 @@ jobs:
             echo 'prerelease=false' >> "$GITHUB_OUTPUT"
           fi
 
-  build:
-    needs: validate
-    uses: ./.github/workflows/main.yml
-    with:
-      package-release: true
-
   draft:
-    needs: [validate, build]
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download release archives
-        uses: actions/download-artifact@v4
-        with:
-          pattern: release-*
-          merge-multiple: true
-          path: dist
-      - name: Generate checksums
-        working-directory: dist
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          sha256sum "xk6-ibmmq-${RELEASE_TAG}-linux-amd64.tar.gz" \
-            "xk6-ibmmq-${RELEASE_TAG}-windows-amd64.zip" > SHA256SUMS
-      - name: Create draft GitHub release
+      - name: Create draft source release
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ github.ref_name }}
-          artifacts: dist/*
-          artifactErrorsFailBuild: true
           draft: true
           prerelease: ${{ needs.validate.outputs.prerelease }}
           generateReleaseNotes: true
-          body: The Linux and Windows binaries require the IBM MQ client at runtime.
+          body: |
+            This is a source-only release. See the [build instructions](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/README.md#build) for the IBM MQ client and local build steps.
           allowUpdates: true
           updateOnlyUnreleased: true
           omitBodyDuringUpdate: true

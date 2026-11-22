@@ -1,0 +1,2 @@
+# Keep upstream license text and line endings intact.
+THIRD_PARTY_LICENSES.txt -text -whitespace

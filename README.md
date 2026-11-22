@@ -23,12 +23,20 @@ Or take advantage of this: https://github.com/marketplace/actions/setup-mq-clien
 
 ## Build
 
+This project distributes source code only. Build your own `k6` binary or
+container image locally.
+
 To build a `k6` binary with this extension, first ensure you have the prerequisites:
 
 - [Go 1.26 or later](https://go.dev/dl/)
 - Git
 
 Run `./build.sh` from the repository root. It uses xk6 v1.5.1 to build the k6 v2 version pinned in `go.mod` and writes the binary to `./k6`.
+
+To build a local Linux x86-64 container image, run
+`docker build --platform linux/amd64 -t xk6-ibmmq:local .`. The build downloads
+the native MQ client directly from IBM. It is subject to the terms in the
+download and is not part of this project's Apache-2.0 license.
 
 ## IBM MQ settings
 
@@ -115,22 +123,28 @@ queues. Your application takes the place of `amqsech` and must set the reply's
 
 ## Cut a release
 
-After merging to `main`, tag the commit you want to release and push the tag.
-For example, for version `v0.1.0`:
+After the changes merge to `main` and CI passes, tag the commit and push the
+tag. For example, for version `v0.1.1`:
 
 ```sh
 git switch main
 git pull --ff-only
-git tag -a v0.1.0 -m 'Release v0.1.0'
-git push origin v0.1.0
+git tag -a v0.1.1 -m 'Release v0.1.1'
+git push origin v0.1.1
 ```
 
-The Release workflow runs the build and smoke tests, then creates a draft
-GitHub release with Linux and Windows x86-64 archives and `SHA256SUMS`. The
-archives do not bundle the IBM MQ client; install it before running the binary.
-Tags such as `v0.1.0-rc.1` are marked as prereleases.
+The Release workflow creates a draft with release notes. Review the notes and
+publish the draft in GitHub. GitHub provides the source archives for the tag;
+there are no binary assets or registry images. Tags such as `v0.1.1-rc.1` are
+marked as prereleases.
 
-Review the draft's notes and assets, then publish it in GitHub. Publishing
-the draft builds and pushes the Linux x86-64 container image with the same tag,
-for example `ghcr.io/iambaim/xk6-ibmmq:v0.1.0`. The image bundles the IBM MQ
-runtime, so no client installation is needed on the host.
+## Licenses
+
+The extension source is licensed under [Apache-2.0](LICENSE). See
+[third-party licenses](THIRD_PARTY_LICENSES.txt) for the texts and notices from
+the pinned Go module graph and the xk6 build tool. k6 is licensed under
+AGPLv3. The native IBM MQ client and the IBM MQ developer container come from
+IBM and use IBM's separate terms.
+
+After updating Go dependencies or the xk6 version, refresh the inventory with
+`python3 scripts/update-third-party-licenses.py`.
