@@ -52,10 +52,10 @@ Both scripts start the IBM MQ container and run
 
 ### Migrating from simulated replies
 
-Remove the fifth `simulateReply` argument from `send()`. If you used `true`,
-start a separate responder before running your test. `send()` puts one message
-on the source queue and returns its message ID; it no longer consumes the
-request or generates a reply.
+Starting with xk6-ibmmq `v0.1.0`, `send()` no longer supports simulated replies.
+Remove the fifth `simulateReply` argument from existing calls. If you passed
+`true`, run a separate responder. `send()` puts one message on the source queue
+and returns its message ID without consuming the request or generating a reply.
 
 A nonempty reply queue now sends `MQMT_REQUEST` instead of `MQMT_DATAGRAM`.
 Pass `''` as the reply queue for a one-way `MQMT_DATAGRAM`.
