@@ -139,11 +139,9 @@ func (s *Ibmmq) Connect() (ibmmq.MQQueueManager, error) {
 	return qMgr, nil
 }
 
-/*
- * Send a message into a sourceQueue, set reply queue == replyQueue, and return the Message ID.
- */
-func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, extraProperties map[string]any, simulateReply bool) (string, error) {
-	var msgId string
+// Send puts a message on sourceQueue and returns its message ID. If replyQueue
+// is set, the message is an MQ request; a separate consumer sends the reply.
+func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, extraProperties map[string]any) (string, error) {
 	var putMsgHandle ibmmq.MQMessageHandle
 
 	// Set queue open options
@@ -175,8 +173,10 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, e
 	pmo.Options |= ibmmq.MQPMO_NEW_MSG_ID
 	pmo.Options |= ibmmq.MQPMO_FAIL_IF_QUIESCING
 
-	// Set reply queue
-	putmqmd.ReplyToQ = replyQueue
+	if replyQueue != "" {
+		putmqmd.MsgType = ibmmq.MQMT_REQUEST
+		putmqmd.ReplyToQ = replyQueue
+	}
 
 	// Prepare the message data
 	var buffer []byte
@@ -217,23 +217,10 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, e
 		pmo.OriginalMsgHandle = putMsgHandle
 	}
 
-	// Put the message
-	err = qObject.Put(putmqmd, pmo, buffer)
-
-	// Handle errors
-	if err != nil {
+	if err := qObject.Put(putmqmd, pmo, buffer); err != nil {
 		return "", fmt.Errorf("error in putting msg: %w", err)
 	}
-	msgId = hex.EncodeToString(putmqmd.MsgId)
-
-	// Check if we need to simulate the reply
-	if simulateReply {
-		if simErr := s.replyToMessage(sourceQueue, putmqmd.MsgId); simErr != nil {
-			return "", simErr
-		}
-	}
-
-	return msgId, nil
+	return hex.EncodeToString(putmqmd.MsgId), nil
 }
 
 /*
@@ -291,77 +278,6 @@ func (s *Ibmmq) Receive(replyQueue string, msgId string, waitInterval int32) (in
 		return 1, "", fmt.Errorf("error getting message: %w", err)
 	}
 	return 0, string(buffer), nil
-}
-
-/*
- * Simulate another application replying to a message.
- * sentMsgId is the MsgId of the message just put, used to match exactly that message.
- */
-func (s *Ibmmq) replyToMessage(sendQueueName string, sentMsgId []byte) error {
-	mqod := ibmmq.NewMQOD()
-	openOptions := ibmmq.MQOO_INPUT_SHARED
-	mqod.ObjectType = ibmmq.MQOT_Q
-	mqod.ObjectName = sendQueueName
-
-	qMgr, err := s.Connect()
-	if err != nil {
-		return err
-	}
-	defer qMgr.Disc()
-
-	qObject, err := qMgr.Open(mqod, openOptions)
-	if err != nil {
-		return fmt.Errorf("(SIM) error in opening queue: %w", err)
-	}
-
-	getmqmd := ibmmq.NewMQMD()
-	gmo := ibmmq.NewMQGMO()
-
-	gmo.Options = ibmmq.MQGMO_NO_SYNCPOINT
-	gmo.Options |= ibmmq.MQGMO_WAIT
-	gmo.WaitInterval = 3 * 1000
-
-	// Match on the specific MsgId so we only consume the message this VU sent
-	getmqmd.MsgId = sentMsgId
-	gmo.MatchOptions = ibmmq.MQMO_MATCH_MSG_ID
-	gmo.Version = ibmmq.MQGMO_VERSION_2
-
-	buffer := make([]byte, 0, 1024)
-	buffer, _, err = qObject.GetSlice(getmqmd, gmo, buffer)
-	qObject.Close(0)
-	if err != nil {
-		mqret := err.(*ibmmq.MQReturn)
-		if mqret.MQRC != ibmmq.MQRC_NO_MSG_AVAILABLE {
-			return fmt.Errorf("(SIM) error getting message: %w", err)
-		}
-		return nil
-	}
-
-	mqod = ibmmq.NewMQOD()
-	openOptions = ibmmq.MQOO_OUTPUT
-	mqod.ObjectType = ibmmq.MQOT_Q
-	mqod.ObjectName = getmqmd.ReplyToQ
-
-	qObject, err = qMgr.Open(mqod, openOptions)
-	if err != nil {
-		return fmt.Errorf("(SIM) error in opening reply queue: %w", err)
-	}
-	defer qObject.Close(0)
-
-	putmqmd := ibmmq.NewMQMD()
-	pmo := ibmmq.NewMQPMO()
-
-	pmo.Options = ibmmq.MQPMO_NO_SYNCPOINT
-	pmo.Options |= ibmmq.MQPMO_NEW_MSG_ID
-
-	putmqmd.Format = ibmmq.MQFMT_STRING
-	putmqmd.CorrelId = getmqmd.MsgId
-
-	err = qObject.Put(putmqmd, pmo, []byte("Reply Message"))
-	if err != nil {
-		return fmt.Errorf("(SIM) error in putting msg: %w", err)
-	}
-	return nil
 }
 
 // Clean up message handle

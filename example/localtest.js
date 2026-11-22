@@ -1,35 +1,35 @@
 import { check } from 'k6';
+import { vu } from 'k6/execution';
 import ibmmq from 'k6/x/ibmmq';
 
-const rc = ibmmq.newClient()
+export const options = {
+    scenarios: {
+        roundTrip: { executor: 'per-vu-iterations', vus: 2, iterations: 5 },
+    },
+    thresholds: { checks: ['rate==1'], iterations: ['count==10'] },
+};
+
+ibmmq.newClient();
+
+export function setup() {
+    const msgId = ibmmq.send('DEV.XK6.NO.RESPONDER', 'DEV.XK6.REPLY', 'No responder', { apiVersion: 2 });
+    const [rc, reply] = ibmmq.receive('DEV.XK6.REPLY', msgId, 100);
+    if (!/^[0-9a-f]{48}$/.test(msgId) || rc !== 0 || reply !== '') {
+        throw new Error('Expected send() to return a message ID without generating a reply');
+    }
+}
 
 export default function () {
-    const sourceQueue = "DEV.QUEUE.1"
-    const replyQueue = "DEV.QUEUE.2"
-    const sourceMessage = "Sent Message"
-    // Below is the maximum waiting time to wait for the reply
-    const waitInterval = 3 * 1000
-    // Below is the extra properties that we want to set
-    // Leave it as null or an empty map if no extra properties are needed
-    const extraProperties = new Map([
-        ["apiVersion", 2],
-        ["extraText", "extra"]
-    ])
-    // The below parameter enable/disable a simulated application that will consume
-    // the message in the source queue and put a reply message in the reply queue
-    // and the reply message correlation ID == source message ID
-    const simulateReply = true
-
-    const msgId = ibmmq.send(sourceQueue, replyQueue, sourceMessage, extraProperties, simulateReply)
-    const [rc, res] = ibmmq.receive(replyQueue, msgId, waitInterval)
-
-    // Check the results
-    // If simulateReply = true, the reply message text is always "Reply Message"
-    const replyMessage = "Reply Message"
-    check(res, {
-        'Verify reply text': (r) => r == replyMessage,
-    });
-    check(rc, {
-        'Verify return code': (r) => r == 0,
-    });
+    const sourceQueue = 'DEV.XK6.REQUEST';
+    const replyQueue = 'DEV.XK6.REPLY';
+    const sourceMessage = `Request from VU ${vu.idInTest}, iteration ${vu.iterationInScenario}`;
+    let matched = false;
+    try {
+        // IBM's sample echoes MQ property headers too; use a plain text request here.
+        const msgId = ibmmq.send(sourceQueue, replyQueue, sourceMessage, null);
+        const [rc, reply] = ibmmq.receive(replyQueue, msgId, 3000);
+        matched = rc === 0 && reply === sourceMessage;
+    } finally {
+        check(matched, { 'received matching echo': (ok) => ok });
+    }
 }

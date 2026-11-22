@@ -49,15 +49,25 @@ To configure the MQ connection factory, you need to set these environment variab
 
 ## Run local test
 
-First build the extension by running the `./build.sh` and then
-use the provided `./local-test.sh` and `./local-test-ssl.sh` (for SSL). 
-These test files are the self-contained test script that will spin 
-up a local MQ container using docker and run an example k6 test with
-IBM MQ in `./example/localtest.js` file.
+Run `./build.sh`, then `./local-test.sh` or `./local-test-ssl.sh` for TLS.
+Both scripts start an IBM MQ container with a test-only echo responder and run
+[`example/localtest.js`](./example/localtest.js). The responder echoes the
+request body and uses the request's message ID as the reply's correlation ID.
+
+### Migrating from simulated replies
+
+Remove the fifth `simulateReply` argument from `send()`. If you used `true`,
+start a separate responder before running your test. `send()` puts one message
+on the source queue and returns its message ID; it no longer consumes the
+request or generates a reply.
+
+A nonempty reply queue sets the MQ message type to `MQMT_REQUEST`. Pass `''`
+for a one-way `MQMT_DATAGRAM`, and pass `null` if there are no message properties.
 
 ## Example test
 
 ```bash
+$ docker compose -f example/docker-compose.yml up -d --wait localmqtest
 $ export MQ_QMGR="QM1"
 $ export MQ_CHANNEL="DEV.APP.SVRCONN"
 $ export MQ_HOST="localhost"
@@ -65,31 +75,20 @@ $ export MQ_PORT=1414
 $ export MQ_USERID="app"
 $ export MQ_PASSWORD="password"
 
-$ ./k6 run --vus 2 --duration 5s example/localtest.js
+$ ./k6 run example/localtest.js
+$ docker compose -f example/docker-compose.yml down
 ```
 
 ```javascript
+import { check } from 'k6';
 import ibmmq from 'k6/x/ibmmq';
 
-const client = ibmmq.newClient()
+ibmmq.newClient();
 
 export default function () {
-    const sourceQueue = "DEV.QUEUE.1"
-    const replyQueue = "DEV.QUEUE.2"
-    const sourceMessage = "My Message"
-    const replyMessage = "ReplyMsg"
-    // Below is the extra properties that we want to set
-    // Leave it as null or an empty map if no extra properties are needed
-    const extraProperties = new Map([
-        ["apiVersion", 2],
-        ["extraText", "extra"]
-    ])
-    // The below parameter enable/disable a simulated application that will consume
-    // the message in the source queue and put a reply message in the reply queue
-    // and the reply message correlation ID == source message ID
-    const simulateReply = true
-
-    const msgID = ibmmq.send(client, sourceQueue, replyQueue, sourceMessage, simulateReply)
-    ibmmq.receive(client, replyQueue, msgID, replyMessage)
+    const message = 'My Message';
+    const msgId = ibmmq.send('DEV.XK6.REQUEST', 'DEV.XK6.REPLY', message, null);
+    const [rc, reply] = ibmmq.receive('DEV.XK6.REPLY', msgId, 3000);
+    check(reply, { 'received matching echo': (body) => rc === 0 && body === message });
 }
 ```

@@ -1,7 +1,8 @@
 services:
   localmqtest:
     container_name: ibmmq_main
-    image: icr.io/ibm-messaging/mq
+    image: icr.io/ibm-messaging/mq:9.4.5.1-r1
+    platform: linux/amd64
     ports:
       - "1414:1414"
       - "9443:9443"
@@ -10,3 +11,7 @@ services:
       - MQ_QMGR_NAME=QM1
       - MQ_ADMIN_PASSWORD=password
       - MQ_APP_PASSWORD=password
+    volumes:
+      - ./echo.mqsc:/etc/mqm/30-echo.mqsc:ro
+    healthcheck:
+      test: ["CMD-SHELL", "chkmqready && chkmqhealthy"]

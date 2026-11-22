@@ -23,8 +23,8 @@ jobs:
       shell: bash
       run: |
         cd tests
-        docker compose -f docker-compose-test.yml pull --include-deps
-        docker compose -f docker-compose-test.yml run --entrypoint /usr/bin/k6 k6 run --vus 2 --duration 5s /tmp/localtest.js
+        docker compose -f docker-compose-test.yml up -d --wait --wait-timeout 180 qm
+        docker compose -f docker-compose-test.yml run --build --rm k6 run /tmp/localtest.js
 
     - name: Cleanup
       if: always()
