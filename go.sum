@@ -39,8 +39,8 @@ github.com/grafana/sobek v0.0.0-20261105103427-a5b602015248 h1:CbmhwJmn23e2wT6+P
 github.com/grafana/sobek v0.0.0-20261105103427-a5b602015248/go.mod h1:bn7hgQnfWMq4VR3G3hKKK1EkxXMB/LdFAtBd1JG60f8=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 h1:/Tnpcb2E0Pz/tN9s3bfEY2Q8ePCEX9iuS+cneUwncnw=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0/go.mod h1:zOBXOsUaBSjKgmH4OGzV1esUpR3oUSCPYVd2cUBjKYY=
-github.com/ibm-messaging/mq-golang/v5 v5.7.2 h1:ONq3Wykce9lBqTAeFlngpr5ikW2mxpzmC/q6iweDNtg=
-github.com/ibm-messaging/mq-golang/v5 v5.7.2/go.mod h1:xCV0vl1+ik3VyWZnwAj++2J89vSTzhXP1gXhG0X3IYE=
+github.com/ibm-messaging/mq-golang/v5 v5.7.3 h1:y79I9CqeDhpvoZIMPK/me54M1OwBA/s7/R7snbW9670=
+github.com/ibm-messaging/mq-golang/v5 v5.7.3/go.mod h1:xCV0vl1+ik3VyWZnwAj++2J89vSTzhXP1gXhG0X3IYE=
 github.com/klauspost/compress v1.20.3 h1:zWNoFqq/lSuYQRim3dUXlXeA0IqwuZGicdG5ZTfY5j4=
 github.com/klauspost/compress v1.20.3/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
 github.com/mattn/go-colorable v0.1.16 h1:+2YjeAe7xP1OQbZW1jERPWWCDLlNqFNCvjiqGiAt84A=
