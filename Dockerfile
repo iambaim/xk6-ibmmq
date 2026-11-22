@@ -1,8 +1,6 @@
-FROM golang:1.25 AS builder
+FROM golang:1.26-bookworm AS builder
 
 ENV MQC_VERSION="9.4.4.1" \
-    CGO_ENABLED=1 \
-    XK6_RACE_DETECTOR=1 \
     CGO_CFLAGS="-I/opt/mqm/inc" \
     CGO_LDFLAGS="-L/opt/mqm/lib64 -Wl,-rpath=/opt/mqm/lib64" \
     genmqpkg_inctls=1
@@ -24,8 +22,8 @@ RUN wget -q https://public.dhe.ibm.com/ibmdl/export/pub/software/websphere/messa
 WORKDIR /workspace
 
 # Build the k6 binary with the xk6-ibmmq extension
-RUN go install go.k6.io/xk6/cmd/xk6@latest \
-    && xk6 build --with github.com/iambaim/xk6-ibmmq --output /k6
+COPY go.mod go.sum ibmmq.go build.sh ./
+RUN ./build.sh --output /k6
 
 FROM gcr.io/distroless/base-debian12:latest
 

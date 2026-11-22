@@ -1,6 +1,6 @@
 # xk6-ibmmq
 
-[k6](https://go.k6.io/k6) extension for [IBM MQ](https://www.ibm.com/products/mq) using the [xk6](https://github.com/grafana/xk6)
+[k6 v2](https://grafana.com/docs/k6/latest/) extension for [IBM MQ](https://www.ibm.com/products/mq) using the [xk6](https://github.com/grafana/xk6)
 system.
 
 | :exclamation: This is still a very rudimentary implementation. Breaking changes are expected. USE AT YOUR OWN RISK! |
@@ -28,24 +28,10 @@ Or take advantage of this: https://github.com/marketplace/actions/setup-mq-clien
 
 To build a `k6` binary with this extension, first ensure you have the prerequisites:
 
-- [Go toolchain](https://go101.org/article/go-toolchain.html)
+- [Go 1.26 or later](https://go.dev/dl/)
 - Git
 
-Then, install [xk6](https://github.com/grafana/xk6) and build your custom k6 binary with the IBM MQ extension:
-
-1. Install `xk6`:
-
-  ```shell
-  go install go.k6.io/xk6/cmd/xk6@latest
-  ```
-
-2. Build the binary:
-
-  ```shell
-  export CGO_ENABLED=1
-  export XK6_RACE_DETECTOR=1
-  xk6 build --with github.com/iambaim/xk6-ibmmq=.
-  ```
+Run `./build.sh` from the repository root. It uses xk6 v1.5.1 to build the k6 v2 version pinned in `go.mod` and writes the binary to `./k6`.
 
 ## IBM MQ settings
 

@@ -18,6 +18,6 @@ if [[ ! -z ${GITHUB_RUN_ID+y} ]]; then
   echo "${CGO_LDFLAGS-}"
 fi
 
-go install go.k6.io/xk6/cmd/xk6@latest
-XK6_RACE_DETECTOR=1 CGO_ENABLED=1 xk6 -v build \
-    --with github.com/iambaim/xk6-ibmmq=.
+k6_version=$(go list -m -f '{{.Version}}' go.k6.io/k6/v2)
+XK6_RACE_DETECTOR=1 CGO_ENABLED=1 go run go.k6.io/xk6/cmd/xk6@v1.5.1 -v build "$k6_version" \
+    --with github.com/iambaim/xk6-ibmmq=. "$@"
