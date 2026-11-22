@@ -23,10 +23,10 @@ export default function () {
     const sourceQueue = 'DEV.XK6.REQUEST';
     const replyQueue = 'DEV.XK6.REPLY';
     const sourceMessage = `Request from VU ${vu.idInTest}, iteration ${vu.iterationInScenario}`;
+    const properties = { apiVersion: 2, extraText: 'extra' };
     let matched = false;
     try {
-        // IBM's sample echoes MQ property headers too; use a plain text request here.
-        const msgId = ibmmq.send(sourceQueue, replyQueue, sourceMessage, null);
+        const msgId = ibmmq.send(sourceQueue, replyQueue, sourceMessage, properties);
         const [rc, reply] = ibmmq.receive(replyQueue, msgId, 3000);
         matched = rc === 0 && reply === sourceMessage;
     } finally {

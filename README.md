@@ -81,11 +81,12 @@ The Compose container loads [`example/echo.mqsc`](./example/echo.mqsc), which
 configures IBM MQ to launch the `amqsech` sample when a request arrives on
 `DEV.XK6.REQUEST`. There is no separate responder to start for this example.
 
-1. The script sends `My Message` to `DEV.XK6.REQUEST` and sets `ReplyToQ`
-   to `DEV.XK6.REPLY`. `send()` returns the request's message ID without
-   waiting for the reply.
-2. `amqsech` reads the request and puts `My Message` on `DEV.XK6.REPLY`.
-   It copies the request's `MsgId` into the reply's `CorrelId`.
+1. The script sends `My Message` and its MQ message properties to
+   `DEV.XK6.REQUEST`, with `ReplyToQ` set to `DEV.XK6.REPLY`. `send()` returns
+   the request's message ID without waiting for the reply.
+2. The test request queue uses `PROPCTL(NONE)`, so MQ delivers only the text
+   body to `amqsech`. The responder echoes that text and copies the request's
+   `MsgId` into the reply's `CorrelId`.
 3. `receive()` uses `msgId` to pick that reply from `DEV.XK6.REPLY`, even if
    other replies are on the same queue. It waits up to 3,000 ms for a match.
    If none arrives, `receive()` returns `[0, '']` and the body check fails.
@@ -101,7 +102,8 @@ ibmmq.newClient();
 
 export default function () {
     const message = 'My Message';
-    const msgId = ibmmq.send('DEV.XK6.REQUEST', 'DEV.XK6.REPLY', message, null);
+    const properties = { apiVersion: 2, extraText: 'extra' };
+    const msgId = ibmmq.send('DEV.XK6.REQUEST', 'DEV.XK6.REPLY', message, properties);
     const [rc, reply] = ibmmq.receive('DEV.XK6.REPLY', msgId, 3000);
     check(reply, { 'received matching echo': (body) => rc === 0 && body === message });
 }
@@ -110,28 +112,6 @@ export default function () {
 When testing your own application, use its queues in place of the `DEV.XK6.*`
 queues. Your application takes the place of `amqsech` and must set the reply's
 `CorrelId` to the request's `MsgId` for `receive()` to find it.
-
-### Send with message properties
-
-Pass a JavaScript object as the fourth argument to `send()` to attach IBM MQ
-message properties, or pass `null` if none are needed. This one-way example
-uses `DEV.QUEUE.1` from the local container and leaves the reply queue blank.
-
-```javascript
-import ibmmq from 'k6/x/ibmmq';
-
-ibmmq.newClient();
-
-export default function () {
-    ibmmq.send('DEV.QUEUE.1', '', 'Order shipped', {
-        apiVersion: 2,
-        extraText: 'extra',
-    });
-}
-```
-
-The echo test passes `null` because IBM's sample responder can include the
-MQ property header in its reply, which would break the plain-text comparison.
 
 ## Cut a release
 
