@@ -7,13 +7,21 @@ on:
   push:
     branches:
     - main
+  workflow_call:
+    inputs:
+      package-release:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   build-test:
     strategy:
       matrix:
         environment: ['ubuntu-latest', 'windows-latest']
-        mq-client-version: [9.4.4.1]
+        mq-client-version: ['9.4.5.1']
     runs-on: ${{ matrix.environment }}
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +51,8 @@ jobs:
         working-directory: ./
         run: ./build.sh
         shell: bash
+        env:
+          XK6_RACE_DETECTOR: ${{ inputs.package-release && '0' || '1' }}
       
       - name: Test
         working-directory: ./
@@ -55,14 +65,31 @@ jobs:
         run: ./local-test-ssl.sh
         shell: bash
         if: matrix.environment == 'ubuntu-latest'
-      - name: Create dynamic variable
-        run: echo "COMMIT_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+      - name: Package Linux binary
+        if: inputs.package-release && runner.os == 'Linux'
         shell: bash
-        if: github.event_name == 'push'
-      - uses: ncipollo/release-action@v1
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          ./k6 version
+          mkdir -p dist
+          tar -czf "dist/xk6-ibmmq-${RELEASE_TAG}-linux-amd64.tar.gz" k6 LICENSE
+
+      - name: Package Windows binary
+        if: inputs.package-release && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\k6.exe version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Compress-Archive -Path k6.exe, LICENSE -DestinationPath "dist/xk6-ibmmq-${env:GITHUB_REF_NAME}-windows-amd64.zip"
+
+      - name: Upload release archive
+        if: inputs.package-release
+        uses: actions/upload-artifact@v4
         with:
-          artifacts: "./k6*"
-          draft: true
-          allowUpdates: true
-          tag: "build-${{ env.COMMIT_SHORT }}"
-        if: github.event_name == 'push'
+          name: release-${{ runner.os }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true

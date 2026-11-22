@@ -3,9 +3,6 @@
 [k6 v2](https://grafana.com/docs/k6/latest/) extension for [IBM MQ](https://www.ibm.com/products/mq) using the [xk6](https://github.com/grafana/xk6)
 system.
 
-| :exclamation: This is still a very rudimentary implementation. Breaking changes are expected. USE AT YOUR OWN RISK! |
-|------|
-
 ## Prerequisites
 
 IBM MQ client (Linux/Win) or toolkit (Mac) installation is required to build and run this extension. 
@@ -49,15 +46,24 @@ To configure the MQ connection factory, you need to set these environment variab
 
 ## Run local test
 
-First build the extension by running the `./build.sh` and then
-use the provided `./local-test.sh` and `./local-test-ssl.sh` (for SSL). 
-These test files are the self-contained test script that will spin 
-up a local MQ container using docker and run an example k6 test with
-IBM MQ in `./example/localtest.js` file.
+Run `./build.sh`, then `./local-test.sh` or `./local-test-ssl.sh` for TLS.
+Both scripts start the IBM MQ container and run
+[`example/localtest.js`](./example/localtest.js).
+
+### Migrating from simulated replies
+
+Starting with xk6-ibmmq `v0.1.0`, `send()` no longer supports simulated replies.
+Remove the fifth `simulateReply` argument from existing calls. If you passed
+`true`, run a separate responder. `send()` puts one message on the source queue
+and returns its message ID without consuming the request or generating a reply.
+
+A nonempty reply queue now sends `MQMT_REQUEST` instead of `MQMT_DATAGRAM`.
+Pass `''` as the reply queue for a one-way `MQMT_DATAGRAM`.
 
 ## Example test
 
 ```bash
+$ docker compose -f example/docker-compose.yml up -d --wait localmqtest
 $ export MQ_QMGR="QM1"
 $ export MQ_CHANNEL="DEV.APP.SVRCONN"
 $ export MQ_HOST="localhost"
@@ -65,31 +71,66 @@ $ export MQ_PORT=1414
 $ export MQ_USERID="app"
 $ export MQ_PASSWORD="password"
 
-$ ./k6 run --vus 2 --duration 5s example/localtest.js
+$ ./k6 run example/localtest.js
+$ docker compose -f example/docker-compose.yml down
 ```
+
+### Where the reply comes from
+
+The Compose container loads [`example/echo.mqsc`](./example/echo.mqsc), which
+configures IBM MQ to launch the `amqsech` sample when a request arrives on
+`DEV.XK6.REQUEST`. There is no separate responder to start for this example.
+
+1. The script sends `My Message` and its MQ message properties to
+   `DEV.XK6.REQUEST`, with `ReplyToQ` set to `DEV.XK6.REPLY`. `send()` returns
+   the request's message ID without waiting for the reply.
+2. The test request queue uses `PROPCTL(NONE)`, so MQ delivers only the text
+   body to `amqsech`. The responder echoes that text and copies the request's
+   `MsgId` into the reply's `CorrelId`.
+3. `receive()` uses `msgId` to pick that reply from `DEV.XK6.REPLY`, even if
+   other replies are on the same queue. It waits up to 3,000 ms for a match.
+   If none arrives, `receive()` returns `[0, '']` and the body check fails.
+
+The snippet below shows one round trip. `example/localtest.js` uses a distinct
+message for each virtual user and iteration so the check can catch a mix-up.
 
 ```javascript
+import { check } from 'k6';
 import ibmmq from 'k6/x/ibmmq';
 
-const client = ibmmq.newClient()
+ibmmq.newClient();
 
 export default function () {
-    const sourceQueue = "DEV.QUEUE.1"
-    const replyQueue = "DEV.QUEUE.2"
-    const sourceMessage = "My Message"
-    const replyMessage = "ReplyMsg"
-    // Below is the extra properties that we want to set
-    // Leave it as null or an empty map if no extra properties are needed
-    const extraProperties = new Map([
-        ["apiVersion", 2],
-        ["extraText", "extra"]
-    ])
-    // The below parameter enable/disable a simulated application that will consume
-    // the message in the source queue and put a reply message in the reply queue
-    // and the reply message correlation ID == source message ID
-    const simulateReply = true
-
-    const msgID = ibmmq.send(client, sourceQueue, replyQueue, sourceMessage, simulateReply)
-    ibmmq.receive(client, replyQueue, msgID, replyMessage)
+    const message = 'My Message';
+    const properties = { apiVersion: 2, extraText: 'extra' };
+    const msgId = ibmmq.send('DEV.XK6.REQUEST', 'DEV.XK6.REPLY', message, properties);
+    const [rc, reply] = ibmmq.receive('DEV.XK6.REPLY', msgId, 3000);
+    check(reply, { 'received matching echo': (body) => rc === 0 && body === message });
 }
 ```
+
+When testing your own application, use its queues in place of the `DEV.XK6.*`
+queues. Your application takes the place of `amqsech` and must set the reply's
+`CorrelId` to the request's `MsgId` for `receive()` to find it.
+
+## Cut a release
+
+After merging to `main`, tag the commit you want to release and push the tag.
+For example, for version `v0.1.0`:
+
+```sh
+git switch main
+git pull --ff-only
+git tag -a v0.1.0 -m 'Release v0.1.0'
+git push origin v0.1.0
+```
+
+The Release workflow runs the build and smoke tests, then creates a draft
+GitHub release with Linux and Windows x86-64 archives and `SHA256SUMS`. The
+archives do not bundle the IBM MQ client; install it before running the binary.
+Tags such as `v0.1.0-rc.1` are marked as prereleases.
+
+Review the draft's notes and assets, then publish it in GitHub. Publishing
+the draft builds and pushes the Linux x86-64 container image with the same tag,
+for example `ghcr.io/iambaim/xk6-ibmmq:v0.1.0`. The image bundles the IBM MQ
+runtime, so no client installation is needed on the host.

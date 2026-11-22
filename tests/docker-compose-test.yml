@@ -1,16 +1,18 @@
 services:
   qm:
-    image: icr.io/ibm-messaging/mq:9.4.1.0-r1
-    ports:
-      - "1414:1414"
+    image: icr.io/ibm-messaging/mq:9.4.5.1-r1
+    platform: linux/amd64
     environment:
       - LICENSE=accept
       - MQ_QMGR_NAME=QM1
       - MQ_ADMIN_PASSWORD=password
       - MQ_APP_PASSWORD=password
+    volumes:
+      - ../example/echo.mqsc:/etc/mqm/30-echo.mqsc:ro
     healthcheck:
       test: ["CMD-SHELL", "chkmqready && chkmqhealthy"]
   k6:
+    platform: linux/amd64
     build:
       context: ../
     environment:
@@ -21,8 +23,7 @@ services:
       - MQ_USERID=app
       - MQ_PASSWORD=password
     volumes:
-      -  ./run.sh:/tmp/run.sh
-      - ../example/localtest.js:/tmp/localtest.js
+      - ../example/localtest.js:/tmp/localtest.js:ro
     depends_on:
       qm:
         condition: service_healthy

@@ -1,6 +1,6 @@
 FROM golang:1.26-bookworm AS builder
 
-ENV MQC_VERSION="9.4.4.1" \
+ENV MQC_VERSION="9.4.5.1" \
     CGO_CFLAGS="-I/opt/mqm/inc" \
     CGO_LDFLAGS="-L/opt/mqm/lib64 -Wl,-rpath=/opt/mqm/lib64" \
     genmqpkg_inctls=1
@@ -23,7 +23,8 @@ WORKDIR /workspace
 
 # Build the k6 binary with the xk6-ibmmq extension
 COPY go.mod go.sum ibmmq.go build.sh ./
-RUN ./build.sh --output /k6
+ARG XK6_RACE_DETECTOR=1
+RUN XK6_RACE_DETECTOR="$XK6_RACE_DETECTOR" ./build.sh --output /k6
 
 FROM gcr.io/distroless/base-debian12:latest
 
