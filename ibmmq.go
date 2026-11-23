@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/ibm-messaging/mq-golang/v5/ibmmq"
 	"go.k6.io/k6/v2/js/modules"
+	"go.k6.io/k6/v2/metrics"
 )
 
 func init() {
@@ -23,15 +26,15 @@ var _ modules.Module = &RootModule{}
 
 // NewModuleInstance creates a new per-VU module instance.
 func (*RootModule) NewModuleInstance(vu modules.VU) modules.Instance {
-	return &ModuleInstance{
-		vu:    vu,
-		ibmmq: &Ibmmq{},
+	client := &Ibmmq{vu: vu}
+	if env := vu.InitEnv(); env != nil && env.TestPreInitState != nil && env.Registry != nil {
+		client.connectionMetric = env.Registry.MustNewMetric("ibmmq_connections", metrics.Counter)
 	}
+	return &ModuleInstance{ibmmq: client}
 }
 
 // ModuleInstance is a per-VU instance of the IBM MQ module.
 type ModuleInstance struct {
-	vu    modules.VU
 	ibmmq *Ibmmq
 }
 
@@ -47,13 +50,15 @@ func (mi *ModuleInstance) Exports() modules.Exports {
 
 // Ibmmq is the per-VU IBM MQ client exposed to JavaScript.
 type Ibmmq struct {
-	QMName string
-	cno    *ibmmq.MQCNO
+	QMName           string
+	cno              *ibmmq.MQCNO
+	vu               modules.VU
+	connectionMetric *metrics.Metric
+	idleTimeout      time.Duration
+	connections      connectionCache
 }
 
-/*
- * Initialize Queue Manager connection.
- */
+// NewClient configures the queue manager without opening a connection.
 func (s *Ibmmq) NewClient() (int, error) {
 	// Get all the environment variables
 	QMName, err := getRequiredEnv("MQ_QMGR")
@@ -78,6 +83,10 @@ func (s *Ibmmq) NewClient() (int, error) {
 	SSLCipherSpec := os.Getenv("MQ_TLS_CIPHER_SPEC")
 	if SSLCipherSpec == "" {
 		SSLCipherSpec = "ANY_TLS12_OR_HIGHER"
+	}
+	idleTimeout, err := connectionIdleTimeout(os.Getenv("MQ_CONNECTION_REUSE"), os.Getenv("MQ_CONNECTION_IDLE_TIMEOUT"))
+	if err != nil {
+		return 0, err
 	}
 
 	// Allocate new MQCNO and MQCD structures
@@ -118,30 +127,112 @@ func (s *Ibmmq) NewClient() (int, error) {
 	}
 
 	// Store the state information for later use by Connect()
+	if err := s.Close(); err != nil {
+		return 0, err
+	}
 	s.QMName = QMName
 	s.cno = cno
+	s.idleTimeout = idleTimeout
 	return 0, nil
 }
 
-/*
- * Connect to Queue Manager.
- */
+// Connect opens an uncached connection. Its caller owns the handle.
 func (s *Ibmmq) Connect() (ibmmq.MQQueueManager, error) {
+	return s.connect(false)
+}
+
+func (s *Ibmmq) connect(reuse bool) (ibmmq.MQQueueManager, error) {
 	if s.cno == nil {
 		return ibmmq.MQQueueManager{}, fmt.Errorf("error during Connect: client not initialized, call NewClient() first")
 	}
-	// Connect to the Queue Manager
-	qMgr, err := ibmmq.Connx(s.QMName, s.cno)
+	options := *s.cno
+	if reuse {
+		// Reopen on a later call instead of automatically reconnecting in this call.
+		options.Options &^= ibmmq.MQCNO_RECONNECT
+		options.Options |= ibmmq.MQCNO_RECONNECT_DISABLED
+	}
+	qMgr, err := ibmmq.Connx(s.QMName, &options)
 	if err != nil {
-		rc := int(err.(*ibmmq.MQReturn).MQCC)
-		return qMgr, fmt.Errorf("error during Connect (MQCC=%d): %w", rc, err)
+		return qMgr, fmt.Errorf("error during Connect: %w", err)
 	}
 	return qMgr, nil
+}
+
+// Close disconnects this VU's cached connection. The next call can reopen it.
+func (s *Ibmmq) Close() error {
+	if err := s.connections.close(); err != nil && mqReason(err) != ibmmq.MQRC_HCONN_ERROR {
+		return fmt.Errorf("error disconnecting from IBM MQ: %w", err)
+	}
+	return nil
+}
+
+func connectionIdleTimeout(reuse, timeout string) (time.Duration, error) {
+	if reuse == "" {
+		return 0, nil
+	}
+	enabled, err := strconv.ParseBool(reuse)
+	if err != nil {
+		return 0, fmt.Errorf("MQ_CONNECTION_REUSE must be a boolean: %w", err)
+	}
+	if !enabled {
+		return 0, nil
+	}
+	if timeout == "" {
+		return 30 * time.Second, nil
+	}
+	duration, err := time.ParseDuration(timeout)
+	if err != nil || duration <= 0 {
+		return 0, fmt.Errorf("MQ_CONNECTION_IDLE_TIMEOUT must be a positive duration, for example 30s")
+	}
+	return duration, nil
+}
+
+func (s *Ibmmq) withConnection(op func(*ibmmq.MQQueueManager) error) error {
+	var idle time.Duration
+	if s.vu != nil {
+		// Setup and teardown use a temporary VU with ID 0. Keep their
+		// connections short-lived, and do not connect from the init context in reuse mode.
+		state := s.vu.State()
+		if state == nil && s.idleTimeout > 0 {
+			return fmt.Errorf("IBM MQ send and receive are not available in the init context with connection reuse enabled")
+		}
+		if state != nil && state.VUID != 0 {
+			idle = s.idleTimeout
+		}
+	}
+	return s.connections.use(idle, func() (*mqConnection, error) {
+		manager, err := s.connect(idle > 0)
+		if err != nil {
+			return nil, err
+		}
+		if s.connectionMetric != nil {
+			if state := s.vu.State(); state != nil && state.VUID != 0 {
+				tags := state.Tags.GetCurrentValues()
+				metrics.PushIfNotDone(s.vu.Context(), state.Samples, metrics.Sample{
+					TimeSeries: metrics.TimeSeries{Metric: s.connectionMetric, Tags: tags.Tags},
+					Time:       time.Now(),
+					Value:      1,
+					Metadata:   tags.Metadata,
+				})
+			}
+		}
+		return &mqConnection{manager: &manager, close: manager.Disc}, nil
+	}, op)
 }
 
 // Send puts a message on sourceQueue and returns its message ID. If replyQueue
 // is set, the message is an MQ request; a separate consumer sends the reply.
 func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, extraProperties map[string]any) (string, error) {
+	var msgID string
+	err := s.withConnection(func(manager *ibmmq.MQQueueManager) error {
+		var err error
+		msgID, err = sendOn(manager, sourceQueue, replyQueue, sourceMessage, extraProperties)
+		return err
+	})
+	return msgID, err
+}
+
+func sendOn(qMgr *ibmmq.MQQueueManager, sourceQueue, replyQueue string, sourceMessage any, extraProperties map[string]any) (string, error) {
 	var putMsgHandle ibmmq.MQMessageHandle
 
 	// Set queue open options
@@ -149,13 +240,6 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, e
 	openOptions := ibmmq.MQOO_OUTPUT
 	mqod.ObjectType = ibmmq.MQOT_Q
 	mqod.ObjectName = sourceQueue
-
-	// Connect to Queue Manager
-	qMgr, err := s.Connect()
-	if err != nil {
-		return "", err
-	}
-	defer qMgr.Disc()
 
 	// Open queue
 	qObject, err := qMgr.Open(mqod, openOptions)
@@ -227,23 +311,29 @@ func (s *Ibmmq) Send(sourceQueue string, replyQueue string, sourceMessage any, e
  * Receive a message, matching Correlation ID with the supplied msgId.
  */
 func (s *Ibmmq) Receive(replyQueue string, msgId string, waitInterval int32) (int, string, error) {
+	var reply string
+	err := s.withConnection(func(manager *ibmmq.MQQueueManager) error {
+		var err error
+		reply, err = receiveOn(manager, replyQueue, msgId, waitInterval)
+		return err
+	})
+	if err != nil {
+		return 1, "", err
+	}
+	return 0, reply, nil
+}
+
+func receiveOn(qMgr *ibmmq.MQQueueManager, replyQueue, msgId string, waitInterval int32) (string, error) {
 	// Prepare to open queue
 	mqod := ibmmq.NewMQOD()
 	openOptions := ibmmq.MQOO_INPUT_SHARED
 	mqod.ObjectType = ibmmq.MQOT_Q
 	mqod.ObjectName = replyQueue
 
-	// Call connect
-	qMgr, err := s.Connect()
-	if err != nil {
-		return 1, "", err
-	}
-	defer qMgr.Disc()
-
 	// Open queue
 	qObject, err := qMgr.Open(mqod, openOptions)
 	if err != nil {
-		return 1, "", fmt.Errorf("error in opening queue: %w", err)
+		return "", fmt.Errorf("error in opening queue: %w", err)
 	}
 	defer qObject.Close(0)
 
@@ -259,7 +349,7 @@ func (s *Ibmmq) Receive(replyQueue string, msgId string, waitInterval int32) (in
 	// Match the correlation id
 	getmqmd.CorrelId, err = hex.DecodeString(msgId)
 	if err != nil {
-		return 1, "", fmt.Errorf("invalid msgId hex string %q: %w", msgId, err)
+		return "", fmt.Errorf("invalid msgId hex string %q: %w", msgId, err)
 	}
 	gmo.MatchOptions = ibmmq.MQMO_MATCH_CORREL_ID
 	gmo.Version = ibmmq.MQGMO_VERSION_2
@@ -270,14 +360,12 @@ func (s *Ibmmq) Receive(replyQueue string, msgId string, waitInterval int32) (in
 
 	// Handle errors
 	if err != nil {
-		mqret := err.(*ibmmq.MQReturn)
-		if mqret.MQRC == ibmmq.MQRC_NO_MSG_AVAILABLE {
-			// Not a real error — message simply not available yet
-			return 0, "", nil
+		if mqReason(err) == ibmmq.MQRC_NO_MSG_AVAILABLE {
+			return "", nil
 		}
-		return 1, "", fmt.Errorf("error getting message: %w", err)
+		return "", fmt.Errorf("error getting message: %w", err)
 	}
-	return 0, string(buffer), nil
+	return string(buffer), nil
 }
 
 // Clean up message handle

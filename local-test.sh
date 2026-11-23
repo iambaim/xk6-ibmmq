@@ -14,4 +14,6 @@ export MQ_PORT=1414
 export MQ_USERID="app"
 export MQ_PASSWORD="password"
 
-"${K6_BINARY:-./k6}" run example/localtest.js
+MQ_TEST_VUS=2 MQ_CONNECTION_REUSE=false "${K6_BINARY:-./k6}" run example/localtest.js
+MQ_TEST_VUS=2 MQ_CONNECTION_REUSE=true "${K6_BINARY:-./k6}" run example/localtest.js
+MQ_TEST_VUS=8 MQ_CONNECTION_REUSE=true "${K6_BINARY:-./k6}" run example/localtest.js

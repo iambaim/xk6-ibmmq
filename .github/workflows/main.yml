@@ -50,6 +50,15 @@ jobs:
         working-directory: ./
         run: dspmqver
 
+      - name: Test connection lifecycle
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mq_path="$HOME/IBM/MQ/data"
+          export CGO_CFLAGS="-I$mq_path/inc"
+          export CGO_LDFLAGS="-L$mq_path/lib64 -Wl,-rpath,$mq_path/lib64"
+          CGO_ENABLED=1 go test -race ./...
+
       - name: Build
         working-directory: ./
         run: ./build.sh

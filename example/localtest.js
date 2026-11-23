@@ -2,11 +2,25 @@ import { check } from 'k6';
 import { vu } from 'k6/execution';
 import ibmmq from 'k6/x/ibmmq';
 
+const vus = Number(__ENV.MQ_TEST_VUS || 2);
+const iterations = 5;
+const reuse = __ENV.MQ_CONNECTION_REUSE === 'true';
+const connectionsPerVU = reuse ? 1 : iterations * 2;
+const thresholds = {
+    checks: ['rate==1'],
+    iterations: [`count==${vus * iterations}`],
+    ibmmq_connections: [`count==${vus * connectionsPerVU}`],
+};
+
+for (let id = 1; id <= vus; id++) {
+    thresholds[`ibmmq_connections{mq_test_vu:${id}}`] = [`count==${connectionsPerVU}`];
+}
+
 export const options = {
     scenarios: {
-        roundTrip: { executor: 'per-vu-iterations', vus: 2, iterations: 5 },
+        roundTrip: { executor: 'per-vu-iterations', vus, iterations },
     },
-    thresholds: { checks: ['rate==1'], iterations: ['count==10'] },
+    thresholds,
 };
 
 ibmmq.newClient();
@@ -20,6 +34,7 @@ export function setup() {
 }
 
 export default function () {
+    vu.metrics.tags.mq_test_vu = String(vu.idInTest);
     const sourceQueue = 'DEV.XK6.REQUEST';
     const replyQueue = 'DEV.XK6.REPLY';
     const sourceMessage = `Request from VU ${vu.idInTest}, iteration ${vu.iterationInScenario}`;
@@ -29,6 +44,13 @@ export default function () {
         const msgId = ibmmq.send(sourceQueue, replyQueue, sourceMessage, properties);
         const [rc, reply] = ibmmq.receive(replyQueue, msgId, 3000);
         matched = rc === 0 && reply === sourceMessage;
+        if (reuse && vu.iterationInScenario === 0) {
+            const [timeoutRC, missing] = ibmmq.receive(replyQueue, msgId, 100);
+            matched = matched && timeoutRC === 0 && missing === '';
+        }
+        if (reuse && vu.iterationInScenario === iterations - 1) {
+            ibmmq.close();
+        }
     } finally {
         check(matched, { 'received matching echo': (ok) => ok });
     }

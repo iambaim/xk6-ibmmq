@@ -52,11 +52,38 @@ To configure the MQ connection factory, you need to set these environment variab
 7. `MQ_TLS_KEYSTORE`. TLS keystore to use. Usage example: [local-test-ssl.sh](./local-test-ssl.sh).
 8. `MQ_TLS_CIPHER_SPEC`. TLS CipherSpec to use. Usage example: [local-test-ssl.sh](./local-test-ssl.sh).
 
+### Reuse connections across iterations
+
+Set `MQ_CONNECTION_REUSE=true` before running k6 to open one MQ connection per
+virtual user (VU) on its first `send()` or `receive()`. The VU reuses that
+connection across iterations. VUs never share an MQ connection handle; queue
+handles still open and close on every call. By default, each operation opens
+and closes its own connection, which is useful for testing connection setup.
+
+An unused connection closes after 30 seconds by default. Set
+`MQ_CONNECTION_IDLE_TIMEOUT` to a positive duration, such as `10s` or `2m`, to
+change that. Call `ibmmq.close()` to disconnect the current VU immediately;
+its next MQ operation can open a new connection. `setup()` and `teardown()`
+use a new connection per operation even when reuse is enabled.
+
+In reuse mode, IBM MQ client auto-reconnect is disabled. If an operation loses
+its connection, it returns the error and the next operation opens a fresh
+connection. The extension does not replay a failed send: MQ may have accepted
+the message before the connection dropped. A receive timeout leaves the
+connection open.
+
+The `ibmmq_connections` counter records successful connections opened by
+`send()` and `receive()` inside VU iterations. It counts MQ handles, not TCP
+sockets, and excludes `setup()` and `teardown()`.
+
 ## Run local test
 
 Run `./build.sh`, then `./local-test.sh` or `./local-test-ssl.sh` for TLS.
 Both scripts start the IBM MQ container and run
 [`example/localtest.js`](./example/localtest.js).
+They check that two VUs get the right replies with reuse off and on. The
+non-TLS script also tests eight VUs sharing a reply queue. Both scripts check
+the number of connections opened by each VU.
 
 ### Migrating from simulated replies
 
@@ -124,19 +151,21 @@ queues. Your application takes the place of `amqsech` and must set the reply's
 ## Cut a release
 
 Push a stable version tag (`vX.Y.Z`) for a commit on `main`. For example, for
-version `v0.1.1`:
+version `v0.2.0`:
 
 ```sh
 git switch main
 git pull --ff-only
-git tag -a v0.1.1 -m 'Release v0.1.1'
-git push origin v0.1.1
+git tag -a v0.2.0 -m 'Release v0.2.0'
+git push origin v0.2.0
 ```
 
 The [Release workflow](https://github.com/iambaim/xk6-ibmmq/actions/workflows/release.yml)
 builds the tagged commit on Linux and Windows and runs the MQ smoke tests on
 Linux. If those checks pass, it publishes a GitHub release with generated notes
 and source archives. It does not upload binaries or publish container images.
+If the tagged commit includes `releases/<tag>.md`, the workflow adds that text
+before the generated notes.
 
 To publish an existing stable tag, run **Release** from `main` and enter the
 tag. The workflow tests the tagged commit without moving or recreating the tag.
