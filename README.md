@@ -54,15 +54,18 @@ To configure the MQ connection factory, you need to set these environment variab
 
 ### Reuse connections across iterations
 
-Set `MQ_CONNECTION_REUSE=true` before running k6 to open one MQ connection per
+Set `MQ_CONNECTION_REUSE=true` in the environment or pass
+`-e MQ_CONNECTION_REUSE=true` to `k6 run` to open one MQ connection per
 virtual user (VU) on its first `send()` or `receive()`. The VU reuses that
 connection across iterations. VUs never share an MQ connection handle; queue
 handles still open and close on every call. By default, each operation opens
 and closes its own connection, which is useful for testing connection setup.
+After `newClient()`, `ibmmq.connectionReuseEnabled()` reports whether reuse
+is enabled.
 
 An unused connection closes after 30 seconds by default. Set
 `MQ_CONNECTION_IDLE_TIMEOUT` to a positive duration, such as `10s` or `2m`, to
-change that. Call `ibmmq.close()` to disconnect the current VU immediately;
+change that. Call `ibmmq.close()` to disconnect the current VU;
 its next MQ operation can open a new connection. `setup()` and `teardown()`
 use a new connection per operation even when reuse is enabled.
 
@@ -70,7 +73,8 @@ In reuse mode, IBM MQ client auto-reconnect is disabled. If an operation loses
 its connection, it returns the error and the next operation opens a fresh
 connection. The extension does not replay a failed send: MQ may have accepted
 the message before the connection dropped. A receive timeout leaves the
-connection open.
+connection open. If MQ fails to release a queue or message handle, the extension
+discards the connection without changing the result of a completed operation.
 
 The `ibmmq_connections` counter records successful connections opened by
 `send()` and `receive()` inside VU iterations. It counts MQ handles, not TCP
@@ -125,6 +129,13 @@ configures IBM MQ to launch the `amqsech` sample when a request arrives on
 3. `receive()` uses `msgId` to pick that reply from `DEV.XK6.REPLY`, even if
    other replies are on the same queue. It waits up to 3,000 ms for a match.
    If none arrives, `receive()` returns `[0, '']` and the body check fails.
+
+Pass the message ID returned by `send()` to `receive()`. It must be 48 hex
+characters and cannot be all zeros: MQ treats an all-zero ID as a wildcard.
+Use `0` to check once without waiting. A wait of `-1` has no message timeout
+and requires a cancellable k6 context. `receive()` checks for cancellation
+between MQ waits of at most 250 ms; it cannot interrupt a native call already
+in progress.
 
 The snippet below shows one round trip. `example/localtest.js` uses a distinct
 message for each virtual user and iteration so the check can catch a mix-up.

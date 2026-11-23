@@ -27,15 +27,16 @@ func (f *connectionFixture) dial() (*mqConnection, error) {
 	}, nil
 }
 
-func noop(*ibmmq.MQQueueManager) error { return nil }
+func noop(*mqOperation) error { return nil }
 
 func TestConnectionsAreIsolated(t *testing.T) {
 	var a, b connectionCache
 	var first, second connectionFixture
 	t.Cleanup(func() { _ = a.close(); _ = b.close() })
 	var firstHandle, secondHandle *ibmmq.MQQueueManager
-	remember := func(handle **ibmmq.MQQueueManager) func(*ibmmq.MQQueueManager) error {
-		return func(conn *ibmmq.MQQueueManager) error {
+	remember := func(handle **ibmmq.MQQueueManager) func(*mqOperation) error {
+		return func(op *mqOperation) error {
+			conn := op.manager
 			if *handle != nil && *handle != conn {
 				return errors.New("connection unexpectedly replaced")
 			}
@@ -77,7 +78,7 @@ func TestConnectionFailureDoesNotReplayOperation(t *testing.T) {
 
 	for _, reason := range []int32{ibmmq.MQRC_NO_MSG_AVAILABLE, ibmmq.MQRC_UNKNOWN_OBJECT_NAME} {
 		want := fmt.Errorf("operation: %w", &ibmmq.MQReturn{MQRC: reason})
-		if got := cache.use(time.Minute, f.dial, func(*ibmmq.MQQueueManager) error { return want }); !errors.Is(got, want) {
+		if got := cache.use(time.Minute, f.dial, func(*mqOperation) error { return want }); !errors.Is(got, want) {
 			t.Fatalf("expected original MQ error, got %v", got)
 		}
 	}
@@ -87,7 +88,7 @@ func TestConnectionFailureDoesNotReplayOperation(t *testing.T) {
 
 	want := fmt.Errorf("put: %w", &ibmmq.MQReturn{MQRC: ibmmq.MQRC_CONNECTION_BROKEN})
 	calls := 0
-	if got := cache.use(time.Minute, f.dial, func(*ibmmq.MQQueueManager) error {
+	if got := cache.use(time.Minute, f.dial, func(*mqOperation) error {
 		calls++
 		return want
 	}); !errors.Is(got, want) {
@@ -98,6 +99,27 @@ func TestConnectionFailureDoesNotReplayOperation(t *testing.T) {
 	}
 	if err := cache.use(time.Minute, f.dial, noop); err != nil || f.dials.Load() != 2 {
 		t.Fatalf("next operation should open a new connection, got %v", err)
+	}
+}
+
+func TestCleanupFailureRetiresConnectionWithoutChangingResult(t *testing.T) {
+	for _, original := range []error{nil, errors.New("put failed")} {
+		var cache connectionCache
+		var f connectionFixture
+		if got := cache.use(time.Minute, f.dial, func(op *mqOperation) error {
+			op.recordCleanup("close output queue", errors.New("close failed"))
+			op.recordCleanup("delete message handle", nil)
+			return original
+		}); got != original {
+			t.Fatalf("cleanup changed the operation result: got %v, want %v", got, original)
+		}
+		if f.dials.Load() != 1 || f.closes.Load() != 1 {
+			t.Fatal("expected cleanup failure to discard the cached connection")
+		}
+		if err := cache.use(time.Minute, f.dial, noop); err != nil || f.dials.Load() != 2 {
+			t.Fatalf("expected a fresh connection, got %v", err)
+		}
+		_ = cache.close()
 	}
 }
 
@@ -123,7 +145,7 @@ func TestIdleTimerCannotCloseAnActiveOperation(t *testing.T) {
 		if err := cache.use(idle, f.dial, noop); err != nil {
 			t.Fatal(err)
 		}
-		if err := cache.use(idle, f.dial, func(*ibmmq.MQQueueManager) error {
+		if err := cache.use(idle, f.dial, func(*mqOperation) error {
 			time.Sleep(2 * idle)
 			if f.closes.Load() != 0 {
 				return errors.New("connection closed during operation")
@@ -154,7 +176,7 @@ func TestFailedDialCanBeRetried(t *testing.T) {
 	t.Cleanup(func() { _ = cache.close() })
 	want := errors.New("dial failed")
 	opCalls := 0
-	op := func(*ibmmq.MQQueueManager) error {
+	op := func(*mqOperation) error {
 		opCalls++
 		return nil
 	}

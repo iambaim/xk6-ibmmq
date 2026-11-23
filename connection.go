@@ -2,6 +2,7 @@ package xk6ibmmq
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -14,6 +15,23 @@ type mqConnection struct {
 	close   func() error
 }
 
+type mqOperation struct {
+	manager    *ibmmq.MQQueueManager
+	cleanupErr error
+}
+
+func (op *mqOperation) recordCleanup(action string, err error) {
+	if err != nil {
+		op.cleanupErr = errors.Join(op.cleanupErr, fmt.Errorf("%s: %w", action, err))
+	}
+}
+
+func (op *mqOperation) logCleanupError() {
+	if op.cleanupErr != nil {
+		log.Printf("IBM MQ handle cleanup: %v", op.cleanupErr)
+	}
+}
+
 // connectionCache belongs to one module instance. Keep its lock during MQ calls
 // so an idle timer or an explicit close cannot disconnect an in-flight call.
 type connectionCache struct {
@@ -22,14 +40,16 @@ type connectionCache struct {
 	timer *time.Timer
 }
 
-func (c *connectionCache) use(idle time.Duration, dial func() (*mqConnection, error), op func(*ibmmq.MQQueueManager) error) error {
+func (c *connectionCache) use(idle time.Duration, dial func() (*mqConnection, error), run func(*mqOperation) error) error {
 	if idle == 0 {
 		conn, err := dial()
 		if err != nil {
 			return err
 		}
 		defer func() { logDisconnectError(conn.close()) }()
-		return op(conn.manager)
+		op := &mqOperation{manager: conn.manager}
+		defer op.logCleanupError()
+		return run(op)
 	}
 
 	c.mu.Lock()
@@ -46,16 +66,20 @@ func (c *connectionCache) use(idle time.Duration, dial func() (*mqConnection, er
 		c.conn = conn
 	}
 
+	op := &mqOperation{manager: c.conn.manager}
 	var opErr error
 	defer func() {
-		if connectionLost(opErr) {
+		op.logCleanupError()
+		// A cleanup error should retire the connection without changing the
+		// result of a put or get that already completed.
+		if op.cleanupErr != nil || connectionLost(opErr) {
 			logDisconnectError(c.closeLocked())
 			return
 		}
 		c.scheduleIdleClose(idle)
 	}()
 	// Run the operation once. A failed put may already have reached MQ.
-	opErr = op(c.conn.manager)
+	opErr = run(op)
 	return opErr
 }
 
