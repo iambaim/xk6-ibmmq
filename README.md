@@ -52,11 +52,42 @@ To configure the MQ connection factory, you need to set these environment variab
 7. `MQ_TLS_KEYSTORE`. TLS keystore to use. Usage example: [local-test-ssl.sh](./local-test-ssl.sh).
 8. `MQ_TLS_CIPHER_SPEC`. TLS CipherSpec to use. Usage example: [local-test-ssl.sh](./local-test-ssl.sh).
 
+### Reuse connections across iterations
+
+Set `MQ_CONNECTION_REUSE=true` in the environment or pass
+`-e MQ_CONNECTION_REUSE=true` to `k6 run` to open one MQ connection per
+virtual user (VU) on its first `send()` or `receive()`. The VU reuses that
+connection across iterations. VUs never share an MQ connection handle; queue
+handles still open and close on every call. By default, each operation opens
+and closes its own connection, which is useful for testing connection setup.
+After `newClient()`, `ibmmq.connectionReuseEnabled()` reports whether reuse
+is enabled.
+
+An unused connection closes after 30 seconds by default. Set
+`MQ_CONNECTION_IDLE_TIMEOUT` to a positive duration, such as `10s` or `2m`, to
+change that. Call `ibmmq.close()` to disconnect the current VU;
+its next MQ operation can open a new connection. `setup()` and `teardown()`
+use a new connection per operation even when reuse is enabled.
+
+In reuse mode, IBM MQ client auto-reconnect is disabled. If an operation loses
+its connection, it returns the error and the next operation opens a fresh
+connection. The extension does not replay a failed send: MQ may have accepted
+the message before the connection dropped. A receive timeout leaves the
+connection open. If MQ fails to release a queue or message handle, the extension
+discards the connection without changing the result of a completed operation.
+
+The `ibmmq_connections` counter records successful connections opened by
+`send()` and `receive()` inside VU iterations. It counts MQ handles, not TCP
+sockets, and excludes `setup()` and `teardown()`.
+
 ## Run local test
 
 Run `./build.sh`, then `./local-test.sh` or `./local-test-ssl.sh` for TLS.
 Both scripts start the IBM MQ container and run
 [`example/localtest.js`](./example/localtest.js).
+They check that two VUs get the right replies with reuse off and on. The
+non-TLS script also tests eight VUs sharing a reply queue. Both scripts check
+the number of connections opened by each VU.
 
 ### Migrating from simulated replies
 
@@ -99,6 +130,13 @@ configures IBM MQ to launch the `amqsech` sample when a request arrives on
    other replies are on the same queue. It waits up to 3,000 ms for a match.
    If none arrives, `receive()` returns `[0, '']` and the body check fails.
 
+Pass the message ID returned by `send()` to `receive()`. It must be 48 hex
+characters and cannot be all zeros: MQ treats an all-zero ID as a wildcard.
+Use `0` to check once without waiting. A wait of `-1` has no message timeout
+and requires a cancellable k6 context. `receive()` checks for cancellation
+between MQ waits of at most 250 ms; it cannot interrupt a native call already
+in progress.
+
 The snippet below shows one round trip. `example/localtest.js` uses a distinct
 message for each virtual user and iteration so the check can catch a mix-up.
 
@@ -124,19 +162,21 @@ queues. Your application takes the place of `amqsech` and must set the reply's
 ## Cut a release
 
 Push a stable version tag (`vX.Y.Z`) for a commit on `main`. For example, for
-version `v0.1.1`:
+version `v0.2.0`:
 
 ```sh
 git switch main
 git pull --ff-only
-git tag -a v0.1.1 -m 'Release v0.1.1'
-git push origin v0.1.1
+git tag -a v0.2.0 -m 'Release v0.2.0'
+git push origin v0.2.0
 ```
 
 The [Release workflow](https://github.com/iambaim/xk6-ibmmq/actions/workflows/release.yml)
 builds the tagged commit on Linux and Windows and runs the MQ smoke tests on
 Linux. If those checks pass, it publishes a GitHub release with generated notes
 and source archives. It does not upload binaries or publish container images.
+If the tagged commit includes `releases/<tag>.md`, the workflow adds that text
+before the generated notes.
 
 To publish an existing stable tag, run **Release** from `main` and enter the
 tag. The workflow tests the tagged commit without moving or recreating the tag.

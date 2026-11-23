@@ -22,7 +22,7 @@ RUN wget -q https://public.dhe.ibm.com/ibmdl/export/pub/software/websphere/messa
 WORKDIR /workspace
 
 # Build the k6 binary with the xk6-ibmmq extension
-COPY go.mod go.sum ibmmq.go build.sh ./
+COPY go.mod go.sum ibmmq.go connection.go build.sh ./
 ARG XK6_RACE_DETECTOR=1
 RUN XK6_RACE_DETECTOR="$XK6_RACE_DETECTOR" ./build.sh --output /k6
 

@@ -37,4 +37,5 @@ export MQ_TLS_KEYSTORE="./pki/myqmgr"
 
 export MQ_TLS_CIPHER_SPEC="ANY_TLS12_OR_HIGHER"
 
-"${K6_BINARY:-./k6}" run example/localtest.js
+MQ_TEST_VUS=2 MQ_TEST_EXPECT_REUSE=false MQ_CONNECTION_REUSE=false "${K6_BINARY:-./k6}" run example/localtest.js
+MQ_TEST_VUS=2 MQ_TEST_EXPECT_REUSE=true MQ_CONNECTION_REUSE=true "${K6_BINARY:-./k6}" run example/localtest.js

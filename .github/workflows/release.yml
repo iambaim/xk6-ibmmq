@@ -73,6 +73,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out release notes
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          ref: ${{ needs.resolve-tag.outputs.commit }}
+          persist-credentials: false
       - name: Publish source-only GitHub Release
         shell: bash
         env:
@@ -94,4 +99,8 @@ jobs:
             printf 'Release already exists: %s\n' "$release"
             exit 0
           fi
-          gh release create "$TAG" --verify-tag --generate-notes
+          args=(--verify-tag --generate-notes)
+          if [[ -f "releases/$TAG.md" ]]; then
+            args+=(--notes "$(cat "releases/$TAG.md")")
+          fi
+          gh release create "$TAG" "${args[@]}"
